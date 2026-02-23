@@ -5,6 +5,10 @@ Consulta Portal da Transparencia (CEIS/CNEP/CEAF) e base CNPJ da Receita
 Federal para due diligence e compliance em processos judiciais.
 """
 
+from __future__ import annotations
+
+from typing import Optional
+
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
@@ -93,7 +97,7 @@ async def check_sanctions(identifier: str):
     )
 
 
-@router.get("/cnpj/{cnpj}", response_model=CNPJSearchResult | None)
+@router.get("/cnpj/{cnpj}", response_model=Optional[CNPJSearchResult])
 async def search_cnpj(cnpj: str):
     """Busca dados de uma empresa pelo CNPJ na base da Receita Federal."""
     clean = cnpj.replace(".", "").replace("/", "").replace("-", "")

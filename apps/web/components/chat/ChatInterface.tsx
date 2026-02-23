@@ -8,13 +8,15 @@ import { SourceCitation, type Source } from './SourceCitation';
 import { cn } from '@/lib/utils';
 
 export function ChatInterface() {
+  const getHeaders = (): Record<string, string> => {
+    if (typeof window === 'undefined') return {};
+    const token = localStorage.getItem('token');
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  };
+
   const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat({
     api: '/api/chat',
-    headers: () => {
-      if (typeof window === 'undefined') return {};
-      const token = localStorage.getItem('token');
-      return token ? { Authorization: `Bearer ${token}` } : {};
-    },
+    headers: getHeaders(),
   });
 
   return (
