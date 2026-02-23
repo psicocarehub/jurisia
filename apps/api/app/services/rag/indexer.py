@@ -20,6 +20,7 @@ from qdrant_client.models import (
 )
 
 from app.config import settings
+from app.services.clients import create_es_client, create_qdrant_client
 from app.services.ingestion.deduplicator import Deduplicator
 from app.services.rag.chunker import Chunk, LegalChunker
 from app.services.rag.embeddings import EmbeddingService
@@ -28,8 +29,6 @@ logger = logging.getLogger("jurisai.indexer")
 
 ES_INDEX_SETTINGS = {
     "settings": {
-        "number_of_shards": 1,
-        "number_of_replicas": 0,
         "analysis": {
             "analyzer": {
                 "brazilian_legal": {
@@ -37,7 +36,6 @@ ES_INDEX_SETTINGS = {
                     "tokenizer": "standard",
                     "filter": [
                         "lowercase",
-                        "brazilian_stem",
                         "asciifolding",
                     ],
                 }
@@ -95,8 +93,8 @@ class Indexer:
         qdrant_client: Optional[AsyncQdrantClient] = None,
     ) -> None:
         self.tenant_id = tenant_id
-        self.es = es_client or AsyncElasticsearch(settings.ELASTICSEARCH_URL)
-        self.qdrant = qdrant_client or AsyncQdrantClient(url=settings.QDRANT_URL)
+        self.es = es_client or create_es_client()
+        self.qdrant = qdrant_client or create_qdrant_client()
         self.chunker = LegalChunker()
         self.embedder = EmbeddingService()
         self.dedup = Deduplicator()

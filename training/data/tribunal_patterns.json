@@ -1,0 +1,21 @@
+{
+  "generated_at": "2026-02-23T20:54:34.810373",
+  "tribunals": {
+    "STJ": {
+      "patterns": {
+        "sumula_citations": {
+          "top_sumulas": []
+        },
+        "article_citations": {
+          "top_articles": []
+        },
+        "area_distribution": {},
+        "teses_firmadas": []
+      },
+      "meta": {
+        "total_decisions": 0,
+        "total_questions": 0
+      }
+    }
+  }
+}

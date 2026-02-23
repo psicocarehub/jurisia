@@ -5,6 +5,7 @@ from typing import Any, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import Response
 from pydantic import BaseModel
 
 from app.config import settings
@@ -303,6 +304,77 @@ async def verify_citations(
         "revoked": sum(1 for c in citations if c.status == "revoked"),
         "citations": [c.model_dump() for c in citations],
     }
+
+
+async def _fetch_petition_row(petition_id: str, tenant_id: str) -> dict:
+    """Fetch a single petition row from Supabase."""
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.get(
+            _base_url(),
+            headers=_headers(),
+            params={"id": f"eq.{petition_id}", "tenant_id": f"eq.{tenant_id}"},
+        )
+        if resp.status_code != 200 or not resp.json():
+            raise HTTPException(status_code=404, detail="Petition not found")
+        return resp.json()[0]
+
+
+@router.get("/{petition_id}/export/pdf")
+async def export_petition_pdf(
+    petition_id: str,
+    user: dict = Depends(get_current_user),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Export petition as PDF with ABNT formatting."""
+    row = await _fetch_petition_row(petition_id, tenant_id)
+
+    from app.services.petition.exporter import export_pdf
+
+    try:
+        pdf_bytes = export_pdf(
+            content=row.get("content", ""),
+            title=row.get("title", "Peticao"),
+            ai_generated=row.get("ai_generated", False),
+        )
+    except Exception as e:
+        logger.error("PDF export failed: %s", e)
+        raise HTTPException(status_code=500, detail=f"PDF generation failed: {e}")
+
+    filename = f"{row.get('title', 'peticao')}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/{petition_id}/export/docx")
+async def export_petition_docx(
+    petition_id: str,
+    user: dict = Depends(get_current_user),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Export petition as DOCX with ABNT formatting."""
+    row = await _fetch_petition_row(petition_id, tenant_id)
+
+    from app.services.petition.exporter import export_docx
+
+    try:
+        docx_bytes = export_docx(
+            content=row.get("content", ""),
+            title=row.get("title", "Peticao"),
+            ai_generated=row.get("ai_generated", False),
+        )
+    except Exception as e:
+        logger.error("DOCX export failed: %s", e)
+        raise HTTPException(status_code=500, detail=f"DOCX generation failed: {e}")
+
+    filename = f"{row.get('title', 'peticao')}.docx"
+    return Response(
+        content=docx_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 def _row_to_response(row: dict) -> PetitionResponse:

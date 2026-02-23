@@ -7,11 +7,10 @@ Uses ES 8.16+ native RRF when available, fallback to manual RRF merge.
 from dataclasses import dataclass
 from typing import List, Optional
 
-from elasticsearch import AsyncElasticsearch
-from qdrant_client import AsyncQdrantClient
 from qdrant_client.models import Filter, FieldCondition, MatchValue
 
 from app.config import settings
+from app.services.clients import create_es_client, create_qdrant_client
 from app.services.rag.embeddings import EmbeddingService
 from app.services.rag.reranker import RerankerService
 
@@ -37,8 +36,8 @@ class HybridRetriever:
     RRF_K = 60
 
     def __init__(self) -> None:
-        self.es = AsyncElasticsearch(settings.ELASTICSEARCH_URL)
-        self.qdrant = AsyncQdrantClient(url=settings.QDRANT_URL)
+        self.es = create_es_client()
+        self.qdrant = create_qdrant_client()
         self.embedder = EmbeddingService()
         self.reranker = RerankerService()
 

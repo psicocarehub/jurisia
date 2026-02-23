@@ -7,10 +7,10 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
-from elasticsearch import AsyncElasticsearch
 from pydantic import BaseModel
 
 from app.config import settings
+from app.services.clients import create_es_client
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ class JurimetricsService:
     """Judge profiling via Elasticsearch aggregation on indexed decisions."""
 
     def __init__(self) -> None:
-        self.es = AsyncElasticsearch(settings.ELASTICSEARCH_URL)
+        self.es = create_es_client()
         self.index = f"{settings.ES_INDEX_PREFIX}_chunks"
 
     async def get_judge_profile(

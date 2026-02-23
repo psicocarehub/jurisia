@@ -41,7 +41,7 @@ LETTER_MAP = {0: "A", 1: "B", 2: "C", 3: "D", 4: "E"}
 def collect_oab(output_file: str = "training/data/questions_oab.jsonl") -> int:
     """Download OAB exams dataset and convert to JSONL."""
     print("Baixando dataset eduagarcia/oab_exams...")
-    ds = load_dataset("eduagarcia/oab_exams", split="Se")
+    ds = load_dataset("eduagarcia/oab_exams", split="train")
 
     questions: list[dict[str, Any]] = []
 

@@ -18,10 +18,12 @@ class Settings(BaseSettings):
     # Elasticsearch
     ELASTICSEARCH_URL: str = "http://localhost:9200"
     ES_INDEX_PREFIX: str = "jurisai"
+    ES_API_KEY: str = ""
 
     # Qdrant
     QDRANT_URL: str = "http://localhost:6333"
     QDRANT_COLLECTION: str = "legal_documents"
+    QDRANT_API_KEY: str = ""
 
     # LLM Providers
     GAIA_BASE_URL: str = ""

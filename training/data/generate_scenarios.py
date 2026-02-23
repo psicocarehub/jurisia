@@ -52,7 +52,7 @@ def _load_personas():
         return None
 
 
-def _get_random_persona(ds) -> dict[str, str] | None:
+def _get_random_persona(ds) -> "dict[str, str] | None":
     """Pick a random persona from the dataset."""
     if ds is None:
         return None
@@ -175,8 +175,8 @@ async def _generate_scenario(
     category: dict[str, Any],
     api_key: str,
     model: str = "deepseek-chat",
-    persona: dict[str, str] | None = None,
-) -> dict[str, Any] | None:
+    persona: "dict[str, str] | None" = None,
+) -> "dict[str, Any] | None":
     """Generate a single scenario via DeepSeek, optionally enriched with a persona."""
     area = random.choice(category["areas"])
     prompt = category["prompt"].format(area=area)
@@ -234,7 +234,7 @@ async def generate_scenarios(
     count: int = 5000,
     model: str = "deepseek-chat",
     batch_size: int = 10,
-    api_key: str | None = None,
+    api_key: "str | None" = None,
     use_personas: bool = False,
 ) -> int:
     """Generate synthetic legal scenarios, optionally enriched with Nemotron-Personas."""
