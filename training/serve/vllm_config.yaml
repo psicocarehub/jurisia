@@ -1,0 +1,21 @@
+# vLLM serving config for GAIA Legal Reasoning
+# Used as reference for Modal deploy and local vLLM server
+
+model: "training/grpo/gaia-legal-reasoning"  # or HuggingFace path
+tensor_parallel_size: 1
+gpu_memory_utilization: 0.90
+max_model_len: 8192
+dtype: "auto"
+
+# Quantization (optional, for lower VRAM)
+# quantization: "awq"  # or "gptq", "fp8"
+
+# Sampling
+temperature: 0.7
+top_p: 0.95
+max_tokens: 4096
+
+# API
+host: "0.0.0.0"
+port: 8000
+# OpenAI-compatible: vllm serve --api-key optional

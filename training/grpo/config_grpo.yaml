@@ -1,0 +1,28 @@
+# GRPO (Group Relative Policy Optimization) - GAIA Legal Reasoning
+# Hyperparameters baseados no DeepSeek-R1
+
+sft_model_path: "training/sft/gaia-legal-sft"
+max_seq_length: 8192
+load_in_4bit: true
+
+# Dataset (formato: question, correct_answer opcional)
+dataset_path: "training/data/grpo_problems.jsonl"
+output_dir: "training/grpo/checkpoints"
+save_dir: "training/grpo/gaia-legal-reasoning"
+
+# GRPO
+num_train_epochs: 1
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 4
+learning_rate: 3.0e-6
+num_generations: 8        # Group size (G outputs per prompt)
+max_completion_length: 8192
+max_prompt_length: 2048
+temperature: 1.0
+beta: 0.001              # KL coefficient
+
+# Logging
+logging_steps: 5
+save_steps: 100
+bf16: true
+seed: 42

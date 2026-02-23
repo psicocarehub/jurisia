@@ -1,0 +1,86 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-gray-200;
+  }
+
+  body {
+    @apply bg-gray-50 text-gray-900 antialiased;
+  }
+
+  html {
+    @apply scroll-smooth;
+  }
+}
+
+/* Tiptap / ProseMirror editor styles */
+.ProseMirror {
+  outline: none;
+}
+
+.ProseMirror p.is-editor-empty:first-child::before {
+  color: theme('colors.gray.400');
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+/* Citation highlighting in editor */
+.citation-highlight {
+  @apply rounded bg-legal-blue-100 px-0.5;
+}
+
+/* Tiptap editor content styling */
+.tiptap-editor-content {
+  @apply max-w-none text-gray-900;
+}
+
+.tiptap-editor-content p {
+  @apply mb-3 leading-relaxed;
+}
+
+.tiptap-editor-content h1 {
+  @apply mb-4 mt-6 text-xl font-bold;
+}
+
+.tiptap-editor-content h2 {
+  @apply mb-3 mt-4 text-lg font-semibold;
+}
+
+.tiptap-editor-content h3 {
+  @apply mb-2 mt-3 text-base font-semibold;
+}
+
+.tiptap-editor-content ul {
+  @apply list-disc pl-6;
+}
+
+.tiptap-editor-content ol {
+  @apply list-decimal pl-6;
+}
+
+.tiptap-editor-content li {
+  @apply mb-1;
+}
+
+.tiptap-editor-content blockquote {
+  @apply border-l-4 border-gray-300 pl-4 italic text-gray-600;
+}
+
+@layer components {
+  .btn-primary {
+    @apply inline-flex items-center justify-center rounded-lg bg-legal-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-legal-blue-700 focus:outline-none focus:ring-2 focus:ring-legal-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-legal-blue-500 focus:ring-offset-2;
+  }
+
+  .input-field {
+    @apply block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm placeholder-gray-400 focus:border-legal-blue-500 focus:outline-none focus:ring-1 focus:ring-legal-blue-500;
+  }
+}
