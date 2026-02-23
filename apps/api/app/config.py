@@ -9,8 +9,10 @@ class Settings(BaseSettings):
     SECRET_KEY: str = "change-me-to-a-secure-random-string"
     API_KEY_HEADER: str = "X-API-Key"
 
-    # Database
+    # Database (Supabase)
     DATABASE_URL: str = "postgresql+asyncpg://jurisai:jurisai_dev@localhost:5432/jurisai"
+    SUPABASE_URL: str = ""
+    SUPABASE_ANON_KEY: str = ""
     REDIS_URL: str = "redis://localhost:6379/0"
 
     # Elasticsearch
