@@ -83,9 +83,10 @@ Um copiloto de IA para advogados brasileiros que entrega:
 ┌──────▼──────────────────────────────────────────────────────────┐
 │                      LLM LAYER                                    │
 │  GAIA 4B Fine-Tuned (vLLM no Modal) ← Tier 1 (70-80% queries)  │
-│  DeepSeek R1 API                     ← Tier 2 (moderado)        │
-│  Claude/GPT-4 API                    ← Tier 3 (complexo)        │
-│  Sabiá-3 API (Maritaca)             ← Tier 2 alt (PT-BR nativo)│
+│  DeepSeek V3.2 / Qwen 3.5 API      ← Tier 2 (moderado)        │
+│  Claude Sonnet 4 / Gemini 3 Pro     ← Tier 3 (complexo)        │
+│  Kimi K2.5 / MiniMax M2.5          ← Tier 2 alt (agentes)     │
+│  Sabiá-3 API (Maritaca)            ← Tier 2 alt (PT-BR nativo)│
 │  RouteLLM (classifier-based router)                              │
 └──────┬──────────────────────────────────────────────────────────┘
        │
@@ -138,7 +139,8 @@ Um copiloto de IA para advogados brasileiros que entrega:
 ### AI/ML
 | Componente | Tecnologia | Versão | Justificativa |
 |-----------|-----------|--------|---------------|
-| Reasoning Model | GAIA 4B fine-tuned | custom | Modelo brasileiro, self-hosted |
+| Reasoning Model | GAIA 4B fine-tuned | custom | Modelo brasileiro, self-hosted (base Gemma 3 4B) |
+| Teacher Models | DeepSeek V3.2 / Qwen 3.5 | latest | Distilação: melhor custo-benefício 2026 |
 | LLM Serving | vLLM | latest | Continuous batching, PagedAttention |
 | Training | TRL + Unsloth | latest | GRPO, QLoRA, 80% menos VRAM |
 | Embeddings | voyage-law-2 / bge-m3 | latest | Legal benchmark SOTA / self-hosted multilingual |
@@ -222,7 +224,7 @@ juris-ai/
 │   │   │   │   │   ├── __init__.py
 │   │   │   │   │   ├── router.py     # RouteLLM / LiteLLM routing
 │   │   │   │   │   ├── gaia.py       # GAIA inference client
-│   │   │   │   │   ├── providers.py  # Claude, DeepSeek, Sabiá-3
+│   │   │   │   │   ├── providers.py  # DeepSeek V3.2, Claude, Qwen 3.5, Kimi K2.5
 │   │   │   │   │   └── prompts.py    # System prompts por tarefa
 │   │   │   │   │
 │   │   │   │   ├── rag/
@@ -476,10 +478,14 @@ class Settings(BaseSettings):
     # LLM Providers
     GAIA_BASE_URL: str      # Modal vLLM endpoint
     GAIA_MODEL_NAME: str = "gaia-legal-reasoning-v1"
-    DEEPSEEK_API_KEY: str = ""
-    ANTHROPIC_API_KEY: str = ""
-    OPENAI_API_KEY: str = ""
-    MARITACA_API_KEY: str = ""  # Sabiá-3
+    DEEPSEEK_API_KEY: str = ""       # DeepSeek V3.2 ($0.28/$1.10 por M tokens)
+    ANTHROPIC_API_KEY: str = ""      # Claude Sonnet 4 (complexo)
+    OPENAI_API_KEY: str = ""         # GPT-5.2 (fallback)
+    QWEN_API_KEY: str = ""           # Qwen 3.5 ($0.50/$2.00) — Apache 2.0, ótimo custo-benefício
+    KIMI_API_KEY: str = ""           # Kimi K2.5 ($0.45/$2.20) — líder em agentic tasks
+    MINIMAX_API_KEY: str = ""        # MiniMax M2.5 ($0.30/$1.10) — agentes e produtividade
+    MARITACA_API_KEY: str = ""       # Sabiá-3 (PT-BR nativo)
+    GOOGLE_API_KEY: str = ""         # Gemini 3 Pro ($1.25/$5.00) — melhor preço/performance frontier
 
     # Embeddings
     VOYAGE_API_KEY: str = ""
@@ -504,7 +510,7 @@ class Settings(BaseSettings):
 
     # Routing thresholds
     ROUTER_THRESHOLD_TIER1: float = 0.6  # Abaixo -> GAIA
-    ROUTER_THRESHOLD_TIER2: float = 0.85 # Abaixo -> DeepSeek, Acima -> Claude
+    ROUTER_THRESHOLD_TIER2: float = 0.85 # Abaixo -> DeepSeek V3.2/Qwen 3.5, Acima -> Claude/Gemini
 
     class Config:
         env_file = ".env"
@@ -2551,13 +2557,22 @@ GAIA (Gemma-3-Gaia-PT-BR-4b-it)
 ├── License: Gemma (commercial OK)
 └── VRAM: ~8.64 GB (BF16), ~4-5 GB (INT8/FP8)
 
-Pipeline de treinamento (estilo DeepSeek-R1):
+Pipeline de treinamento (estilo DeepSeek-R1, atualizado Fev/2026):
 1. Coletar dados jurídicos (OAB, STF, STJ, legislação)
-2. Gerar 50K-100K reasoning traces via teacher model (DeepSeek-R1/Claude)
+2. Gerar 50K-100K reasoning traces via teacher model (DeepSeek V3.2 / Qwen 3.5)
 3. SFT com LoRA nos reasoning traces
 4. GRPO com reward functions jurídicas
 5. Avaliação (OAB benchmark, citações)
 6. Deploy no Modal com vLLM
+
+Teacher models disponíveis (Fev/2026, em ordem de custo-benefício):
+├── DeepSeek V3.2    $0.28/$1.10/M — open-source MIT, 85.9% MMLU-Pro
+├── Qwen 3.5         $0.50/$2.00/M — Apache 2.0, 397B MoE, ótimo p/ jurídico
+├── Kimi K2.5        $0.45/$2.20/M — 1T params, líder em agentic tasks
+├── MiniMax M2.5     $0.30/$1.10/M — 80.2% SWE-Bench, bom p/ agentes
+├── Gemini 3 Pro     $1.25/$5.00/M — 89.8% MMLU-Pro, melhor frontier value
+├── Claude Sonnet 4  $3.00/$15.0/M — melhor coding (72.5% SWE-Bench)
+└── GPT-5.2 Pro      $$$/M         — 88.7% MMLU-Pro, mais caro
 ```
 
 ### Reasoning Trace Format
@@ -2585,10 +2600,12 @@ Resposta: [conclusão final com fundamentação]
 Gerar reasoning traces jurídicos usando teacher model.
 Meta: 50K-100K traces de alta qualidade.
 
-Teacher models (em ordem de preferência):
-1. DeepSeek-R1 API ($0.14/M tokens) — melhor custo-benefício
-2. Claude API — melhor qualidade geral
-3. GPT-4o API — alternativa
+Teacher models (em ordem de custo-benefício — Fev/2026):
+1. DeepSeek V3.2 API ($0.28/$1.10 por M tokens) — melhor custo-benefício, open-source MIT
+2. Qwen 3.5 API ($0.50/$2.00 por M tokens) — Apache 2.0, ótimo em jurídico
+3. Kimi K2.5 API ($0.45/$2.20 por M tokens) — líder em agentic tasks
+4. Claude Sonnet 4 API ($3/$15 por M tokens) — melhor qualidade geral
+5. Gemini 3 Pro API ($1.25/$5.00 por M tokens) — melhor frontier value
 
 Pipeline:
 1. Carregar questões OAB + cenários jurídicos
@@ -2619,11 +2636,11 @@ Após </think>, forneça a resposta final de forma direta e objetiva."""
 
 async def generate_traces(
     questions: List[Dict],
-    teacher_model: str = "deepseek-reasoner",
+    teacher_model: str = "deepseek-chat",
     traces_per_question: int = 5,
     output_file: str = "training/data/raw_traces.jsonl",
 ):
-    """Generate reasoning traces using teacher model."""
+    """Generate reasoning traces using teacher model (DeepSeek V3.2 default)."""
 
     results = []
 
@@ -2686,12 +2703,13 @@ async def generate_traces(
     print(f"Generated {len(results)} traces ({len(results)/len(questions)*100:.1f}% success rate)")
 
 async def call_teacher(model: str, system: str, user: str) -> str:
-    """Call teacher model API."""
+    """Call teacher model API (DeepSeek V3.2 / Qwen 3.5 / Claude / Gemini)."""
     async with httpx.AsyncClient(timeout=120.0) as client:
         if "deepseek" in model:
+            api_key = os.environ.get("DEEPSEEK_API_KEY")
             response = await client.post(
                 "https://api.deepseek.com/v1/chat/completions",
-                headers={"Authorization": f"Bearer {DEEPSEEK_API_KEY}"},
+                headers={"Authorization": f"Bearer {api_key}"},
                 json={
                     "model": model,
                     "messages": [
@@ -2702,7 +2720,21 @@ async def call_teacher(model: str, system: str, user: str) -> str:
                     "temperature": 0.7,
                 },
             )
-        # Add Claude, GPT-4 etc.
+        elif "qwen" in model:
+            api_key = os.environ.get("QWEN_API_KEY")
+            response = await client.post(
+                "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+                headers={"Authorization": f"Bearer {api_key}"},
+                json={
+                    "model": model,
+                    "messages": [
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": user},
+                    ],
+                    "max_tokens": 4096,
+                    "temperature": 0.7,
+                },
+            )
 
         return response.json()["choices"][0]["message"]["content"]
 
@@ -2869,7 +2901,7 @@ model.save_pretrained_gguf(
 """
 GRPO (Group Relative Policy Optimization) para reasoning jurídico.
 
-Hyperparams (baseado no DeepSeek-R1):
+Hyperparams (baseado no DeepSeek-R1/V3.2):
 - Learning rate: 3e-6
 - KL coefficient: 0.001
 - Temperature: 1.0
@@ -3298,11 +3330,12 @@ def main():
 """
 Roteamento inteligente entre modelos.
 
-Tiers:
+Tiers (atualizado Fev/2026):
 - Tier 0: Cache/RAG (custo zero)
 - Tier 1: GAIA 4B Local (70-80% queries) — R$0 (infra fixa)
-- Tier 2: DeepSeek R1 API ($0.14/M) ou Sabiá-3 (R$5-10/M)
-- Tier 3: Claude / GPT-4 ($3-15/M)
+- Tier 2: DeepSeek V3.2 ($0.28/$1.10/M) / Qwen 3.5 ($0.50/$2.00/M) / Sabiá-3 (R$5-10/M)
+- Tier 2 alt: Kimi K2.5 ($0.45/$2.20/M) / MiniMax M2.5 ($0.30/$1.10/M) — agentes
+- Tier 3: Claude Sonnet 4 ($3/$15/M) / Gemini 3 Pro ($1.25/$5.00/M)
 
 RouteLLM (github.com/lm-sys/RouteLLM):
 - BERT classifier, >85% redução de custo
@@ -3320,19 +3353,31 @@ class LLMRouter:
         "low": {
             "model": f"openai/{settings.GAIA_MODEL_NAME}",
             "api_base": settings.GAIA_BASE_URL,
-            "api_key": "dummy",  # Self-hosted, no key needed
+            "api_key": "dummy",
         },
         "medium": {
-            "model": "deepseek/deepseek-reasoner",
+            "model": "deepseek/deepseek-chat",       # DeepSeek V3.2 — $0.28/$1.10/M
             "api_key": settings.DEEPSEEK_API_KEY,
+        },
+        "medium_qwen": {
+            "model": "qwen/qwen3.5",                  # Qwen 3.5 — $0.50/$2.00/M, Apache 2.0
+            "api_key": settings.QWEN_API_KEY,
         },
         "medium_pt": {
             "model": "maritaca/sabia-3",
             "api_key": settings.MARITACA_API_KEY,
         },
+        "medium_agent": {
+            "model": "kimi/moonshot-v1-k2.5",         # Kimi K2.5 — líder em agentic tasks
+            "api_key": settings.KIMI_API_KEY,
+        },
         "high": {
             "model": "anthropic/claude-sonnet-4-20250514",
             "api_key": settings.ANTHROPIC_API_KEY,
+        },
+        "high_value": {
+            "model": "gemini/gemini-3-pro",            # Gemini 3 Pro — melhor frontier value
+            "api_key": settings.GOOGLE_API_KEY,
         },
     }
 
@@ -3759,7 +3804,7 @@ Semana 1-2: Setup
 
 Semana 3-4: Chat Básico
 ├── Chat endpoint com SSE streaming
-├── LiteLLM integration (Claude/DeepSeek)
+├── LiteLLM integration (DeepSeek V3.2/Claude/Qwen 3.5)
 ├── Conversation persistence
 └── Basic chat UI
 
@@ -3822,7 +3867,7 @@ Semana 29-32: Training
 ├── GRPO com reward functions jurídicas
 ├── OAB benchmark evaluation
 ├── Citation accuracy evaluation
-└── A/B testing vs Claude/GPT-4
+└── A/B testing vs DeepSeek V3.2/Claude/Gemini 3 Pro
 
 Semana 33-36: Deploy & Integration
 ├── Modal deploy (vLLM + GAIA)
@@ -3867,12 +3912,14 @@ Semana 45-48: Polish
 | Modal (GAIA inference 24/7) | $300-600 | L4, 1 container min |
 | Modal (training mensal) | $60-150 | A100 48-120h |
 | Voyage AI (embeddings) | $50-200 | Depende do volume |
-| DeepSeek API (Tier 2) | $20-100 | $0.14/M tokens |
-| Claude API (Tier 3) | $50-300 | Uso seletivo |
+| DeepSeek V3.2 API (Tier 2) | $15-80 | $0.28/$1.10 por M tokens |
+| Qwen 3.5 / Kimi K2.5 (Tier 2 alt) | $10-60 | $0.30-0.50/M input |
+| Claude Sonnet 4 (Tier 3) | $30-200 | Uso seletivo, complexo |
+| Gemini 3 Pro (Tier 3 alt) | $20-150 | $1.25/$5.00/M, melhor value frontier |
 | AWS sa-east-1 (infra) | $200-500 | RDS, EC2, S3 |
 | Elasticsearch Cloud | $100-300 | Ou self-hosted |
 | Langfuse Cloud | $0-100 | Ou self-hosted |
-| **TOTAL** | **$780-2.250/mês** | |
+| **TOTAL** | **$785-2.340/mês** | Custo Tier 2 ~40% menor com DeepSeek V3.2 |
 
 ---
 
@@ -3880,14 +3927,29 @@ Semana 45-48: Polish
 
 ### Papers
 - DeepSeek-R1: arXiv:2501.12948 (pipeline completo de reasoning)
+- DeepSeek V3.2: largo.dev/tutorials (frontier reasoning 6x menor custo, IMO/IOI gold medals 2025)
 - GRPO: arXiv:2402.03300 (DeepSeekMath)
 - Legal-R1: arXiv:2503.16040 (primeiro CoT jurídico via destilação)
+- LegalEval-Q: arXiv:2505.24826 (benchmark qualidade texto legal — Qwen3 como optimal choice)
 - VICTOR/STF: 45.532 processos, 692K documentos classificados
 - JurisTCU: arXiv:2503.08379 (Summary-Augmented Chunking)
 - RCP-Merging: arXiv:2508.03140 (merge reasoning + domain)
 
+### Modelos (Fev/2026)
+| Modelo | Custo (input/output por M tokens) | MMLU-Pro | Destaque |
+|--------|-----------------------------------|----------|----------|
+| DeepSeek V3.2 | $0.28 / $1.10 | 85.9% | Open-source MIT, 77.8% SWE-Bench |
+| Qwen 3.5 | $0.50 / $2.00 | 84.6% | Apache 2.0, 397B MoE, 262K ctx |
+| MiniMax M2.5 | $0.30 / $1.10 | — | 80.2% SWE-Bench, agentes |
+| Kimi K2.5 | $0.45 / $2.20 | — | 1T params, líder agentic tasks |
+| Gemini 3 Pro | $1.25 / $5.00 | 89.8% | Melhor value frontier |
+| Claude Sonnet 4 | $3.00 / $15.00 | 88.2% | Melhor coding (72.5% SWE-Bench) |
+| GPT-5.2 Pro | $$$ | 88.7% | Melhor overall, mais caro |
+
 ### Repos GitHub
 - GAIA: `CEIA-UFG/Gemma-3-Gaia-PT-BR-4b-it`
+- Qwen 3.5: `QwenLM/Qwen3.5` (Apache 2.0)
+- DeepSeek V3.2: `deepseek-ai/DeepSeek-V3` (MIT)
 - TRL: `huggingface/trl` (GRPOTrainer)
 - Unsloth: `unslothai/unsloth` (80% menos VRAM)
 - Open-R1: `huggingface/open-r1`
@@ -3907,4 +3969,4 @@ Semana 45-48: Polish
 
 ---
 
-*Documento gerado em Fevereiro 2026. Referências e versões podem ter sido atualizadas.*
+*Documento atualizado em Fevereiro 2026. Modelos e preços refletem o estado do mercado em Fev/2026.*

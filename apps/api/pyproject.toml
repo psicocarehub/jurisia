@@ -40,6 +40,8 @@ ml = [
     "transformers>=4.46.0",
     "torch>=2.5.0",
     "spacy>=3.8.0",
+    "datasets>=3.0.0",
+    "rdflib>=7.0.0",
 ]
 
 [build-system]

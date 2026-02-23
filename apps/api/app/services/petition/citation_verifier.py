@@ -72,28 +72,213 @@ class CitationVerifier:
         return re.findall(pattern, text, re.IGNORECASE)
 
     async def _verify_legislation(self, ref: str) -> Citation:
-        """Verify legislation (Planalto/LexML). Stub."""
+        """Verify legislation against LexML SRU and Planalto normas.leg.br."""
+        import httpx
+
+        ref_lower = ref.lower()
+        search_term = re.sub(r"[^\w\s/]", "", ref)
+
+        # Try LexML SRU search
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(
+                    "https://www.lexml.gov.br/busca/SRU",
+                    params={
+                        "operation": "searchRetrieve",
+                        "query": search_term,
+                        "maximumRecords": "3",
+                    },
+                )
+                if resp.status_code == 200 and search_term.split()[0].lower() in resp.text.lower():
+                    return Citation(
+                        text=ref,
+                        type="legislacao",
+                        status=CitationStatus.VERIFIED,
+                        source_url=f"https://www.lexml.gov.br/busca/SRU?query={search_term}",
+                        confidence=0.85,
+                    )
+        except Exception:
+            pass
+
+        # Try normas.leg.br (Planalto)
+        try:
+            async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+                resp = await client.get(
+                    "https://normas.leg.br/api/normas",
+                    params={"busca": search_term, "limit": "3"},
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    normas = data if isinstance(data, list) else data.get("normas", [])
+                    if normas:
+                        norma = normas[0]
+                        url = norma.get("url_texto_original", norma.get("url", ""))
+                        situacao = norma.get("situacao", "").lower()
+                        if "revogad" in situacao:
+                            return Citation(
+                                text=ref, type="legislacao",
+                                status=CitationStatus.REVOKED,
+                                source_url=url, confidence=0.9,
+                                verified_text=f"Situação: {norma.get('situacao', '')}",
+                            )
+                        return Citation(
+                            text=ref, type="legislacao",
+                            status=CitationStatus.VERIFIED,
+                            source_url=url, confidence=0.9,
+                        )
+        except Exception:
+            pass
+
+        # Fallback: search in Elasticsearch
+        try:
+            from app.services.rag.retriever import HybridRetriever
+            retriever = HybridRetriever()
+            chunks = await retriever.retrieve(
+                query=ref, tenant_id="__global__", top_k=3, use_reranker=False,
+            )
+            for c in chunks:
+                if c.doc_type in ("legislacao", "lei", "decreto") and c.score > 0.5:
+                    return Citation(
+                        text=ref, type="legislacao",
+                        status=CitationStatus.VERIFIED,
+                        confidence=round(c.score, 2),
+                        verified_text=c.content[:200],
+                    )
+        except Exception:
+            pass
+
         return Citation(
-            text=ref,
-            type="legislacao",
-            status=CitationStatus.UNCHECKED,
-            confidence=0.0,
+            text=ref, type="legislacao",
+            status=CitationStatus.NOT_FOUND, confidence=0.0,
         )
 
     async def _verify_jurisprudence(self, ref: str) -> Citation:
-        """Verify jurisprudence (STF/STJ APIs). Stub."""
+        """Verify jurisprudence against STF/STJ APIs and Elasticsearch."""
+        import httpx
+
+        # Try STJ API
+        try:
+            from app.services.ingestion.stj import STJClient
+            stj = STJClient()
+            results = await stj.search_decisions(query=ref, max_results=3)
+            if results:
+                first = results[0]
+                return Citation(
+                    text=ref, type="jurisprudencia",
+                    status=CitationStatus.VERIFIED,
+                    source_url=first.get("url", ""),
+                    confidence=0.9,
+                    verified_text=first.get("ementa", "")[:200],
+                )
+        except Exception:
+            pass
+
+        # Try STF API
+        try:
+            from app.services.ingestion.stf import STFClient
+            stf = STFClient()
+            results = await stf.search_decisions(query=ref, max_results=3)
+            if results:
+                first = results[0]
+                return Citation(
+                    text=ref, type="jurisprudencia",
+                    status=CitationStatus.VERIFIED,
+                    source_url=first.get("url", ""),
+                    confidence=0.9,
+                    verified_text=first.get("ementa", "")[:200],
+                )
+        except Exception:
+            pass
+
+        # Fallback: Elasticsearch
+        try:
+            from app.services.rag.retriever import HybridRetriever
+            retriever = HybridRetriever()
+            chunks = await retriever.retrieve(
+                query=ref, tenant_id="__global__", top_k=3, use_reranker=False,
+            )
+            for c in chunks:
+                if c.doc_type in ("acordao", "decisao", "jurisprudencia") and c.score > 0.5:
+                    return Citation(
+                        text=ref, type="jurisprudencia",
+                        status=CitationStatus.VERIFIED,
+                        confidence=round(c.score, 2),
+                        verified_text=c.content[:200],
+                    )
+        except Exception:
+            pass
+
         return Citation(
-            text=ref,
-            type="jurisprudencia",
-            status=CitationStatus.UNCHECKED,
-            confidence=0.0,
+            text=ref, type="jurisprudencia",
+            status=CitationStatus.NOT_FOUND, confidence=0.0,
         )
 
     async def _verify_sumula(self, ref: str) -> Citation:
-        """Verify súmula. Stub."""
+        """Verify súmula against STF/STJ APIs."""
+        import httpx
+
+        ref_lower = ref.lower()
+        number_match = re.search(r"\d+", ref)
+        sumula_number = number_match.group() if number_match else ""
+        is_vinculante = "vinculante" in ref_lower
+        is_stf = "stf" in ref_lower or is_vinculante
+        is_stj = "stj" in ref_lower
+
+        # Try STF for súmulas vinculantes
+        if is_stf or is_vinculante:
+            try:
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    resp = await client.get(
+                        "https://portal.stf.jus.br/textos/verTexto.asp",
+                        params={"servico": "jurisprudenciaSumula", "pagina": "sumula_001_100"},
+                    )
+                    if resp.status_code == 200 and sumula_number and f"Súmula {sumula_number}" in resp.text:
+                        return Citation(
+                            text=ref, type="jurisprudencia",
+                            status=CitationStatus.VERIFIED,
+                            source_url="https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp",
+                            confidence=0.9,
+                        )
+            except Exception:
+                pass
+
+        # Try STJ
+        if is_stj or not is_stf:
+            try:
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    resp = await client.get(
+                        "https://scon.stj.jus.br/SCON/sumstj/toc.jsp",
+                        params={"livre": f"@num={sumula_number}" if sumula_number else ref},
+                    )
+                    if resp.status_code == 200 and sumula_number and sumula_number in resp.text:
+                        return Citation(
+                            text=ref, type="jurisprudencia",
+                            status=CitationStatus.VERIFIED,
+                            source_url=f"https://scon.stj.jus.br/SCON/sumstj/toc.jsp?livre=@num={sumula_number}",
+                            confidence=0.85,
+                        )
+            except Exception:
+                pass
+
+        # Fallback: Elasticsearch
+        try:
+            from app.services.rag.retriever import HybridRetriever
+            retriever = HybridRetriever()
+            chunks = await retriever.retrieve(
+                query=ref, tenant_id="__global__", top_k=3, use_reranker=False,
+            )
+            for c in chunks:
+                if "súmula" in c.content.lower() or "sumula" in c.content.lower():
+                    return Citation(
+                        text=ref, type="jurisprudencia",
+                        status=CitationStatus.VERIFIED,
+                        confidence=round(c.score, 2),
+                        verified_text=c.content[:200],
+                    )
+        except Exception:
+            pass
+
         return Citation(
-            text=ref,
-            type="jurisprudencia",
-            status=CitationStatus.UNCHECKED,
-            confidence=0.0,
+            text=ref, type="jurisprudencia",
+            status=CitationStatus.NOT_FOUND, confidence=0.0,
         )

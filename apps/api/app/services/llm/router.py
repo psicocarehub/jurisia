@@ -9,12 +9,12 @@ class LLMRouter:
     """
     Multi-tier LLM router with intelligent complexity-based selection.
 
-    Tier hierarchy:
-      - low:       GAIA 4B (self-hosted Modal) — custo zero, 70-80% das queries
-      - medium:    OpenAI GPT-4 / DeepSeek R1 — queries moderadas
-      - medium_pt: Maritaca Sabiá-3 — PT-BR nativo
-      - medium_x:  xAI Grok — reasoning alternativo
-      - high:      Anthropic Claude Sonnet — queries complexas
+    Tier hierarchy (atualizado Fev/2026):
+      Tier 0 — Cache/RAG (custo zero)
+      Tier 1 — GAIA 4B fine-tuned (self-hosted Modal, 70-80% das queries)
+      Tier 2 — DeepSeek V3.2 ($0.28/$1.10/M) ou Qwen 3.5 ($0.50/$2.00/M)
+      Tier 3 — Gemini 3 Pro ($1.25/$5.00/M) ou Claude Opus 4.6 ($$)
+      Fallback — GPT-5.2 Pro, Claude, Kimi K2.5, MiniMax M2.5
     """
 
     @property
@@ -28,16 +28,16 @@ class LLMRouter:
                 "api_key": "dummy",
             }
 
-        if settings.OPENAI_API_KEY:
+        if settings.DEEPSEEK_API_KEY:
             tiers["medium"] = {
-                "model": "gpt-4o",
-                "api_key": settings.OPENAI_API_KEY,
+                "model": "deepseek/deepseek-chat",
+                "api_key": settings.DEEPSEEK_API_KEY,
             }
 
-        if settings.DEEPSEEK_API_KEY:
-            tiers["medium_deep"] = {
-                "model": "deepseek/deepseek-reasoner",
-                "api_key": settings.DEEPSEEK_API_KEY,
+        if settings.QWEN_API_KEY:
+            tiers["medium_qwen"] = {
+                "model": "qwen/qwen3.5",
+                "api_key": settings.QWEN_API_KEY,
             }
 
         if settings.MARITACA_API_KEY:
@@ -46,16 +46,40 @@ class LLMRouter:
                 "api_key": settings.MARITACA_API_KEY,
             }
 
+        if settings.KIMI_API_KEY:
+            tiers["medium_agent"] = {
+                "model": "kimi/moonshot-v1-k2.5",
+                "api_key": settings.KIMI_API_KEY,
+            }
+
+        if settings.MINIMAX_API_KEY:
+            tiers["medium_minimax"] = {
+                "model": "minimax/minimax-m2.5",
+                "api_key": settings.MINIMAX_API_KEY,
+            }
+
         if settings.XAI_API_KEY:
             tiers["medium_x"] = {
-                "model": "xai/grok-2-latest",
+                "model": "xai/grok-3",
                 "api_key": settings.XAI_API_KEY,
             }
 
-        if settings.ANTHROPIC_API_KEY:
+        if settings.GOOGLE_API_KEY:
             tiers["high"] = {
-                "model": "anthropic/claude-sonnet-4-20250514",
+                "model": "gemini/gemini-3-pro",
+                "api_key": settings.GOOGLE_API_KEY,
+            }
+
+        if settings.ANTHROPIC_API_KEY:
+            tiers["high_opus"] = {
+                "model": "anthropic/claude-opus-4-20260120",
                 "api_key": settings.ANTHROPIC_API_KEY,
+            }
+
+        if settings.OPENAI_API_KEY:
+            tiers["high_openai"] = {
+                "model": "openai/gpt-5.2-pro",
+                "api_key": settings.OPENAI_API_KEY,
             }
 
         return tiers
@@ -93,7 +117,7 @@ class LLMRouter:
             if api_key:
                 return preferred
 
-        fallback_order = ["high", "medium", "medium_deep", "medium_x", "medium_pt", "low"]
+        fallback_order = ["high", "high_opus", "high_openai", "medium", "medium_qwen", "medium_agent", "medium_minimax", "medium_x", "medium_pt", "low"]
         for tier in fallback_order:
             if tier in tiers:
                 key = tiers[tier].get("api_key", "")

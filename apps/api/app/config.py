@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     DEEPSEEK_API_KEY: str = ""
     ANTHROPIC_API_KEY: str = ""
     OPENAI_API_KEY: str = ""
+    QWEN_API_KEY: str = ""
+    KIMI_API_KEY: str = ""
+    MINIMAX_API_KEY: str = ""
+    GOOGLE_API_KEY: str = ""
     XAI_API_KEY: str = ""
     MARITACA_API_KEY: str = ""
 
@@ -46,6 +50,10 @@ class Settings(BaseSettings):
 
     # Ingestion
     DATAJUD_API_KEY: str = ""
+    JUIT_API_KEY: str = ""
+    JUIT_API_URL: str = "https://api.juit.dev"
+    TRANSPARENCIA_API_KEY: str = ""
+    CNPJ_DATA_DIR: str = "/data/cnpj"
 
     # Storage (Supabase Storage)
     S3_BUCKET: str = "documents"

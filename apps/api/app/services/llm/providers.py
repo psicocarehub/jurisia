@@ -1,5 +1,6 @@
 """
 LLM provider configurations for LiteLLM routing.
+Updated Feb/2026: DeepSeek V3.2, Qwen 3.5, Kimi K2.5, Gemini 3 Pro.
 """
 
 from typing import Any
@@ -18,21 +19,39 @@ def get_provider_config(provider: str = "gaia") -> dict[str, Any]:
             "api_key": "dummy",
         }
 
-    if settings.OPENAI_API_KEY:
-        configs["openai"] = {
-            "model": "gpt-4o",
-            "api_key": settings.OPENAI_API_KEY,
-        }
-
     if settings.DEEPSEEK_API_KEY:
         configs["deepseek"] = {
-            "model": "deepseek/deepseek-reasoner",
+            "model": "deepseek/deepseek-chat",
             "api_key": settings.DEEPSEEK_API_KEY,
+        }
+
+    if settings.QWEN_API_KEY:
+        configs["qwen"] = {
+            "model": "qwen/qwen3.5",
+            "api_key": settings.QWEN_API_KEY,
+        }
+
+    if settings.KIMI_API_KEY:
+        configs["kimi"] = {
+            "model": "kimi/moonshot-v1-k2.5",
+            "api_key": settings.KIMI_API_KEY,
+        }
+
+    if settings.MINIMAX_API_KEY:
+        configs["minimax"] = {
+            "model": "minimax/minimax-m2.5",
+            "api_key": settings.MINIMAX_API_KEY,
+        }
+
+    if settings.OPENAI_API_KEY:
+        configs["openai"] = {
+            "model": "openai/gpt-5.2-pro",
+            "api_key": settings.OPENAI_API_KEY,
         }
 
     if settings.XAI_API_KEY:
         configs["xai"] = {
-            "model": "xai/grok-2-latest",
+            "model": "xai/grok-3",
             "api_key": settings.XAI_API_KEY,
         }
 
@@ -44,14 +63,20 @@ def get_provider_config(provider: str = "gaia") -> dict[str, Any]:
 
     if settings.ANTHROPIC_API_KEY:
         configs["anthropic"] = {
-            "model": "anthropic/claude-sonnet-4-20250514",
+            "model": "anthropic/claude-opus-4-20260120",
             "api_key": settings.ANTHROPIC_API_KEY,
+        }
+
+    if settings.GOOGLE_API_KEY:
+        configs["gemini"] = {
+            "model": "gemini/gemini-3-pro",
+            "api_key": settings.GOOGLE_API_KEY,
         }
 
     if provider in configs:
         return configs[provider]
 
-    for name in ["openai", "anthropic", "xai", "deepseek", "gaia", "maritaca"]:
+    for name in ["deepseek", "qwen", "anthropic", "gemini", "openai", "kimi", "xai", "gaia", "maritaca", "minimax"]:
         if name in configs:
             return configs[name]
 

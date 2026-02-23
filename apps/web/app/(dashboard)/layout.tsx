@@ -9,6 +9,8 @@ import {
   FileSignature,
   BarChart3,
   Settings,
+  Bell,
+  Shield,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -18,6 +20,8 @@ const navItems = [
   { href: '/documents', label: 'Documentos', icon: FileText },
   { href: '/petitions', label: 'Petições', icon: FileSignature },
   { href: '/jurimetrics', label: 'Jurimetria', icon: BarChart3 },
+  { href: '/alerts', label: 'Alertas', icon: Bell },
+  { href: '/compliance', label: 'Compliance', icon: Shield },
   { href: '/settings', label: 'Configurações', icon: Settings },
 ];
 

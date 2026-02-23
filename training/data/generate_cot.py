@@ -1,7 +1,12 @@
 """
-Gerar reasoning traces jurídicos usando teacher model (DeepSeek-R1).
+Gerar reasoning traces jurídicos usando teacher model (DeepSeek V3.2 / Qwen 3.5).
 
 Meta: 50K-100K traces de alta qualidade para SFT do GAIA.
+
+Teacher models disponíveis (Fev/2026):
+  - deepseek-chat (DeepSeek V3.2): $0.28/$1.10/M — melhor custo-benefício, MIT
+  - qwen3.5 (Qwen 3.5): $0.50/$2.00/M — Apache 2.0, ótimo jurídico
+  - moonshot-v1-k2.5 (Kimi K2.5): $0.45/$2.20/M — líder agentic tasks
 
 Pipeline:
 1. Carregar questões OAB + cenários jurídicos
@@ -47,6 +52,13 @@ Após </think>, forneça a resposta final de forma direta e objetiva."""
 # API CALL
 # ============================================
 
+TEACHER_ENDPOINTS: dict[str, tuple[str, str]] = {
+    "deepseek": ("https://api.deepseek.com/v1/chat/completions", "DEEPSEEK_API_KEY"),
+    "qwen": ("https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions", "QWEN_API_KEY"),
+    "moonshot": ("https://api.moonshot.cn/v1/chat/completions", "KIMI_API_KEY"),
+}
+
+
 async def call_teacher(
     model: str,
     system: str,
@@ -56,26 +68,29 @@ async def call_teacher(
     temperature: float = 0.7,
 ) -> str:
     """
-    Call teacher model API (DeepSeek-R1).
+    Call teacher model API (DeepSeek V3.2, Qwen 3.5, or Kimi K2.5).
 
     Args:
-        model: Model identifier (e.g. deepseek-reasoner)
+        model: Model identifier (e.g. deepseek-chat, qwen3.5, moonshot-v1-k2.5)
         system: System prompt
         user: User message
-        api_key: API key (default: DEEPSEEK_API_KEY env var)
+        api_key: API key (default: from env based on model prefix)
         max_tokens: Max tokens to generate
         temperature: Sampling temperature
 
     Returns:
         Raw response content from model
     """
-    api_key = api_key or os.environ.get("DEEPSEEK_API_KEY")
+    provider = next((p for p in TEACHER_ENDPOINTS if p in model), "deepseek")
+    endpoint, env_key = TEACHER_ENDPOINTS[provider]
+
+    api_key = api_key or os.environ.get(env_key)
     if not api_key:
-        raise ValueError("DEEPSEEK_API_KEY must be set or passed as api_key")
+        raise ValueError(f"{env_key} must be set or passed as api_key")
 
     async with httpx.AsyncClient(timeout=120.0) as client:
         response = await client.post(
-            "https://api.deepseek.com/v1/chat/completions",
+            endpoint,
             headers={
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
@@ -161,7 +176,7 @@ def select_best_trace(traces: list[dict[str, Any]]) -> dict[str, Any]:
 
 async def generate_traces(
     questions: list[dict[str, Any]],
-    teacher_model: str = "deepseek-reasoner",
+    teacher_model: str = "deepseek-chat",
     traces_per_question: int = 5,
     output_file: str = "training/data/raw_traces.jsonl",
     api_key: str | None = None,
@@ -262,12 +277,79 @@ def load_questions(path: str) -> list[dict[str, Any]]:
     return questions
 
 
+async def generate_traces_debate(
+    questions: list[dict[str, Any]],
+    output_file: str = "training/data/raw_traces.jsonl",
+    max_iterations: int = 2,
+) -> int:
+    """
+    Generate reasoning traces using multi-agent debate pipeline.
+
+    Each question goes through: Jurist -> Verifier -> Judge -> Critic -> Refiner
+    with optional retry loop. Produces higher quality traces than single-model.
+
+    Args:
+        questions: List of question dicts
+        output_file: Output JSONL path
+        max_iterations: Max debate iterations per question
+
+    Returns:
+        Number of successfully generated trace entries
+    """
+    from training.agents.debate_graph import run_debate
+
+    results: list[dict[str, Any]] = []
+
+    for i, q in enumerate(questions):
+        try:
+            trace = await run_debate(
+                question=q["question"],
+                options=q.get("options"),
+                correct_answer=q.get("correct_answer"),
+                area=q.get("area", "geral"),
+                difficulty=q.get("difficulty", "medium"),
+                max_iterations=max_iterations,
+            )
+
+            if not trace or not trace.get("thinking"):
+                print(f"  [{i+1}/{len(questions)}] SKIP (trace vazio)")
+                continue
+
+            if q.get("correct_answer"):
+                pred = normalize_answer(trace.get("answer", ""))
+                gold = normalize_answer(q["correct_answer"])
+                if pred != gold:
+                    print(f"  [{i+1}/{len(questions)}] SKIP (resposta incorreta: {pred} vs {gold})")
+                    continue
+
+            results.append(trace)
+            iters = trace.get("iterations", 1)
+            cit_score = trace.get("citation_score", 0)
+            severity = trace.get("critic_severity", "?")
+            print(f"  [{i+1}/{len(questions)}] OK (iters={iters}, citations={cit_score:.0%}, severity={severity})")
+
+        except Exception as e:
+            print(f"  [{i+1}/{len(questions)}] ERRO: {e}")
+            continue
+
+    Path(output_file).parent.mkdir(parents=True, exist_ok=True)
+    with open(output_file, "w", encoding="utf-8") as f:
+        for r in results:
+            f.write(json.dumps(r, ensure_ascii=False) + "\n")
+
+    success_rate = len(results) / len(questions) * 100 if questions else 0
+    print(f"\nGerados {len(results)} traces via debate ({success_rate:.1f}% sucesso)")
+    return len(results)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generate CoT traces with teacher model")
     parser.add_argument("--questions", "-q", default="training/data/questions.jsonl", help="Input questions JSONL")
     parser.add_argument("--output", "-o", default="training/data/raw_traces.jsonl", help="Output traces JSONL")
-    parser.add_argument("--model", "-m", default="deepseek-reasoner", help="Teacher model")
-    parser.add_argument("--traces-per-question", "-n", type=int, default=5, help="Traces per question")
+    parser.add_argument("--model", "-m", default="deepseek-chat", help="Teacher model (deepseek-chat, qwen3.5, moonshot-v1-k2.5)")
+    parser.add_argument("--mode", default="simple", choices=["simple", "debate"], help="Generation mode: simple (single model) or debate (multi-agent)")
+    parser.add_argument("--traces-per-question", "-n", type=int, default=5, help="Traces per question (simple mode)")
+    parser.add_argument("--max-iterations", type=int, default=2, help="Max debate iterations (debate mode)")
     parser.add_argument("--min-traces", type=int, default=5)
     parser.add_argument("--max-traces", type=int, default=10)
     args = parser.parse_args()
@@ -280,16 +362,27 @@ def main() -> None:
 
     questions = load_questions(args.questions)
     print(f"Carregadas {len(questions)} questões")
-    asyncio.run(
-        generate_traces(
-            questions=questions,
-            teacher_model=args.model,
-            traces_per_question=args.traces_per_question,
-            output_file=args.output,
-            min_traces=args.min_traces,
-            max_traces=args.max_traces,
+    print(f"Modo: {args.mode}")
+
+    if args.mode == "debate":
+        asyncio.run(
+            generate_traces_debate(
+                questions=questions,
+                output_file=args.output,
+                max_iterations=args.max_iterations,
+            )
         )
-    )
+    else:
+        asyncio.run(
+            generate_traces(
+                questions=questions,
+                teacher_model=args.model,
+                traces_per_question=args.traces_per_question,
+                output_file=args.output,
+                min_traces=args.min_traces,
+                max_traces=args.max_traces,
+            )
+        )
 
 
 if __name__ == "__main__":

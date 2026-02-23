@@ -35,8 +35,8 @@ Visão geral da arquitetura do sistema Juris.AI.
 ┌──────▼──────────────────────────────────────────────────────────┐
 │                      LLM LAYER                                    │
 │  GAIA 4B Fine-Tuned (vLLM no Modal) ← Tier 1 (70-80% queries)  │
-│  DeepSeek R1 API                     ← Tier 2 (moderado)        │
-│  Claude/GPT-4 API                    ← Tier 3 (complexo)        │
+│  DeepSeek V3.2 / Qwen 3.5 / Kimi   ← Tier 2 (moderado)        │
+│  Claude Sonnet 4 / Gemini 3 Pro     ← Tier 3 (complexo)        │
 └─────────────────────────────────────────────────────────────────┘
 ```
 

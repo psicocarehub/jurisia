@@ -40,3 +40,47 @@ lint:
 
 format:
 	cd apps/api && ruff format .
+
+# ============================================
+# Training Pipeline
+# ============================================
+
+collect-oab:
+	python -m training.data.collect_oab -o training/data/questions_oab.jsonl
+
+collect-stj:
+	python -m training.data.collect_stj_scenarios -o training/data/questions_stj.jsonl -p training/data/tribunal_patterns.json
+
+generate-scenarios:
+	python -m training.data.generate_scenarios -o training/data/questions_scenarios.jsonl -n 5000 --personas
+
+merge-questions:
+	cat training/data/questions_oab.jsonl training/data/questions_stj.jsonl training/data/questions_scenarios.jsonl > training/data/questions.jsonl
+	wc -l training/data/questions.jsonl
+
+generate-cot-simple:
+	python -m training.data.generate_cot -q training/data/questions.jsonl -o training/data/raw_traces.jsonl --mode simple
+
+generate-cot-debate:
+	python -m training.data.generate_cot -q training/data/questions.jsonl -o training/data/raw_traces.jsonl --mode debate
+
+filter-traces:
+	python -m training.data.filter_quality -i training/data/raw_traces.jsonl -o training/data/filtered_traces.jsonl -r training/data/quality_report.json
+
+prepare-dataset:
+	python -m training.data.prepare_dataset -i training/data/filtered_traces.jsonl -o training/data/sft_dataset
+
+collect-personas:
+	python -c "from datasets import load_dataset; ds=load_dataset('nvidia/Nemotron-Personas-Brazil', split='train'); print(f'{len(ds)} personas cached')"
+
+collect-pretraining:
+	python -m training.data.collect_pretraining -o training/data/pretraining_corpus
+
+pretrain-gaia:
+	python -m training.pretraining.continued_pretrain --corpus-dir training/data/pretraining_corpus --output-dir training/checkpoints/pretrained
+
+train-pipeline: collect-oab collect-stj generate-scenarios merge-questions generate-cot-debate filter-traces prepare-dataset
+	@echo "Pipeline completo! Dataset pronto em training/data/sft_dataset/"
+
+full-pipeline: collect-pretraining pretrain-gaia train-pipeline
+	@echo "Pipeline completo: pre-training + SFT"
