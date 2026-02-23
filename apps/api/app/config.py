@@ -53,7 +53,7 @@ class Settings(BaseSettings):
     JUIT_API_KEY: str = ""
     JUIT_API_URL: str = "https://api.juit.dev"
     TRANSPARENCIA_API_KEY: str = ""
-    CNPJ_DATA_DIR: str = "/data/cnpj"
+    CNPJ_DATA_DIR: str = "/tmp/jurisai_data/cnpj"
 
     # Storage (Supabase Storage)
     S3_BUCKET: str = "documents"

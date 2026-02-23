@@ -1,19 +1,21 @@
 import logging
 import uuid
+from datetime import datetime, timezone
 from typing import Optional
 
+import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile, File
 from fastapi.responses import Response
 from pydantic import BaseModel
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import get_current_user, get_tenant_id, get_db
-from app.db.models import Document
+from app.config import settings
+from app.dependencies import get_current_user, get_tenant_id
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/documents", tags=["documents"])
+
+TABLE = "documents"
 
 
 class DocumentResponse(BaseModel):
@@ -25,6 +27,7 @@ class DocumentResponse(BaseModel):
     classification_label: Optional[str] = None
     storage_key: Optional[str] = None
     file_size: Optional[int] = None
+    mime_type: Optional[str] = None
     created_at: Optional[str] = None
 
     model_config = {"from_attributes": True}
@@ -35,17 +38,31 @@ class DocumentListResponse(BaseModel):
     total: int
 
 
-def _doc_to_response(d: Document) -> DocumentResponse:
+def _headers():
+    return {
+        "apikey": settings.SUPABASE_ANON_KEY,
+        "Authorization": f"Bearer {settings.SUPABASE_ANON_KEY}",
+        "Content-Type": "application/json",
+        "Prefer": "return=representation",
+    }
+
+
+def _base_url():
+    return f"{settings.SUPABASE_URL}/rest/v1"
+
+
+def _row_to_response(row: dict) -> DocumentResponse:
     return DocumentResponse(
-        id=str(d.id),
-        title=d.title,
-        doc_type=d.doc_type,
-        source=d.source,
-        ocr_status=d.ocr_status,
-        classification_label=d.classification_label,
-        storage_key=getattr(d, "storage_key", None),
-        file_size=getattr(d, "file_size", None),
-        created_at=str(d.created_at) if d.created_at else None,
+        id=str(row.get("id", "")),
+        title=row.get("title", ""),
+        doc_type=row.get("doc_type"),
+        source=row.get("source"),
+        ocr_status=row.get("ocr_status", "pending"),
+        classification_label=row.get("classification_label"),
+        storage_key=row.get("file_path"),
+        file_size=row.get("file_size"),
+        mime_type=row.get("mime_type"),
+        created_at=row.get("created_at"),
     )
 
 
@@ -58,23 +75,35 @@ async def list_documents(
     limit: int = 50,
     user: dict = Depends(get_current_user),
     tenant_id: str = Depends(get_tenant_id),
-    db: AsyncSession = Depends(get_db),
 ):
-    query = select(Document).where(Document.tenant_id == uuid.UUID(tenant_id))
+    params: dict = {
+        "select": "*",
+        "tenant_id": f"eq.{tenant_id}",
+        "order": "created_at.desc",
+        "offset": str(skip),
+        "limit": str(limit),
+    }
     if case_id:
-        query = query.where(Document.case_id == uuid.UUID(case_id))
+        params["case_id"] = f"eq.{case_id}"
     if doc_type:
-        query = query.where(Document.doc_type == doc_type)
+        params["doc_type"] = f"eq.{doc_type}"
     if ocr_status:
-        query = query.where(Document.ocr_status == ocr_status)
-    query = query.offset(skip).limit(limit)
+        params["ocr_status"] = f"eq.{ocr_status}"
 
-    result = await db.execute(query)
-    documents = result.scalars().all()
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(
+                f"{_base_url()}/{TABLE}", headers=_headers(), params=params
+            )
+            resp.raise_for_status()
+            rows = resp.json()
+    except Exception as e:
+        logger.error("Failed to list documents: %s", e)
+        rows = []
 
     return DocumentListResponse(
-        documents=[_doc_to_response(d) for d in documents],
-        total=len(documents),
+        documents=[_row_to_response(r) for r in rows],
+        total=len(rows),
     )
 
 
@@ -85,7 +114,6 @@ async def upload_document(
     case_id: Optional[str] = None,
     user: dict = Depends(get_current_user),
     tenant_id: str = Depends(get_tenant_id),
-    db: AsyncSession = Depends(get_db),
 ):
     from app.services.storage.service import StorageService
 
@@ -99,21 +127,34 @@ async def upload_document(
         content_type=file.content_type or "application/octet-stream",
     )
 
-    doc = Document(
-        tenant_id=uuid.UUID(tenant_id),
-        case_id=uuid.UUID(case_id) if case_id else None,
-        title=file.filename or "Untitled",
-        source="upload",
-        mime_type=file.content_type,
-        file_size=len(file_data),
-        ocr_status="pending",
-        uploaded_by=uuid.UUID(user["id"]),
-        storage_key=storage_key,
-    )
-    db.add(doc)
-    await db.flush()
+    doc_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
+    payload = {
+        "id": doc_id,
+        "tenant_id": tenant_id,
+        "case_id": case_id,
+        "title": file.filename or "Untitled",
+        "source": "upload",
+        "mime_type": file.content_type,
+        "file_size": len(file_data),
+        "file_path": storage_key,
+        "ocr_status": "pending",
+        "uploaded_by": user.get("id", ""),
+        "created_at": now,
+        "updated_at": now,
+    }
 
-    doc_id = str(doc.id)
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
+                f"{_base_url()}/{TABLE}", headers=_headers(), json=payload
+            )
+            resp.raise_for_status()
+            rows = resp.json()
+            row = rows[0] if isinstance(rows, list) else rows
+    except Exception as e:
+        logger.error("Failed to create document: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
 
     from app.services.document_pipeline import process_document
 
@@ -126,7 +167,7 @@ async def upload_document(
         mime_type=file.content_type or "",
     )
 
-    return _doc_to_response(doc)
+    return _row_to_response(row)
 
 
 @router.get("/{document_id}", response_model=DocumentResponse)
@@ -134,18 +175,25 @@ async def get_document(
     document_id: str,
     user: dict = Depends(get_current_user),
     tenant_id: str = Depends(get_tenant_id),
-    db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(
-        select(Document).where(
-            Document.id == uuid.UUID(document_id),
-            Document.tenant_id == uuid.UUID(tenant_id),
-        )
-    )
-    doc = result.scalar_one_or_none()
-    if not doc:
-        raise HTTPException(status_code=404, detail="Document not found")
-    return _doc_to_response(doc)
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(
+                f"{_base_url()}/{TABLE}",
+                headers={**_headers(), "Accept": "application/vnd.pgrst.object+json"},
+                params={"id": f"eq.{document_id}", "tenant_id": f"eq.{tenant_id}"},
+            )
+            if resp.status_code == 406:
+                raise HTTPException(status_code=404, detail="Document not found")
+            resp.raise_for_status()
+            row = resp.json()
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to get document: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+    return _row_to_response(row)
 
 
 @router.get("/{document_id}/download")
@@ -153,19 +201,24 @@ async def download_document(
     document_id: str,
     user: dict = Depends(get_current_user),
     tenant_id: str = Depends(get_tenant_id),
-    db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(
-        select(Document).where(
-            Document.id == uuid.UUID(document_id),
-            Document.tenant_id == uuid.UUID(tenant_id),
-        )
-    )
-    doc = result.scalar_one_or_none()
-    if not doc:
-        raise HTTPException(status_code=404, detail="Document not found")
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(
+                f"{_base_url()}/{TABLE}",
+                headers={**_headers(), "Accept": "application/vnd.pgrst.object+json"},
+                params={"id": f"eq.{document_id}", "tenant_id": f"eq.{tenant_id}"},
+            )
+            if resp.status_code == 406:
+                raise HTTPException(status_code=404, detail="Document not found")
+            resp.raise_for_status()
+            row = resp.json()
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-    storage_key = getattr(doc, "storage_key", None)
+    storage_key = row.get("file_path")
     if not storage_key:
         raise HTTPException(status_code=404, detail="File not in storage")
 
@@ -178,10 +231,8 @@ async def download_document(
 
     return Response(
         content=file_data,
-        media_type=doc.mime_type or "application/octet-stream",
-        headers={
-            "Content-Disposition": f'attachment; filename="{doc.title}"',
-        },
+        media_type=row.get("mime_type") or "application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{row.get("title", "doc")}"'},
     )
 
 
@@ -190,23 +241,32 @@ async def document_status(
     document_id: str,
     user: dict = Depends(get_current_user),
     tenant_id: str = Depends(get_tenant_id),
-    db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(
-        select(Document).where(
-            Document.id == uuid.UUID(document_id),
-            Document.tenant_id == uuid.UUID(tenant_id),
-        )
-    )
-    doc = result.scalar_one_or_none()
-    if not doc:
-        raise HTTPException(status_code=404, detail="Document not found")
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(
+                f"{_base_url()}/{TABLE}",
+                headers={**_headers(), "Accept": "application/vnd.pgrst.object+json"},
+                params={
+                    "select": "id,ocr_status,classification_label,title",
+                    "id": f"eq.{document_id}",
+                    "tenant_id": f"eq.{tenant_id}",
+                },
+            )
+            if resp.status_code == 406:
+                raise HTTPException(status_code=404, detail="Document not found")
+            resp.raise_for_status()
+            row = resp.json()
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
     return {
-        "id": str(doc.id),
-        "ocr_status": doc.ocr_status,
-        "classification_label": doc.classification_label,
-        "title": doc.title,
+        "id": row.get("id"),
+        "ocr_status": row.get("ocr_status"),
+        "classification_label": row.get("classification_label"),
+        "title": row.get("title"),
     }
 
 
@@ -215,23 +275,32 @@ async def delete_document(
     document_id: str,
     user: dict = Depends(get_current_user),
     tenant_id: str = Depends(get_tenant_id),
-    db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(
-        select(Document).where(
-            Document.id == uuid.UUID(document_id),
-            Document.tenant_id == uuid.UUID(tenant_id),
-        )
-    )
-    doc = result.scalar_one_or_none()
-    if not doc:
-        raise HTTPException(status_code=404, detail="Document not found")
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(
+                f"{_base_url()}/{TABLE}",
+                headers={**_headers(), "Accept": "application/vnd.pgrst.object+json"},
+                params={"id": f"eq.{document_id}", "tenant_id": f"eq.{tenant_id}"},
+            )
+            if resp.status_code == 406:
+                raise HTTPException(status_code=404, detail="Document not found")
+            resp.raise_for_status()
+            row = resp.json()
 
-    storage_key = getattr(doc, "storage_key", None)
-    if storage_key:
-        from app.services.storage.service import StorageService
+            storage_key = row.get("file_path")
+            if storage_key:
+                from app.services.storage.service import StorageService
+                storage = StorageService()
+                await storage.delete(storage_key)
 
-        storage = StorageService()
-        await storage.delete(storage_key)
-
-    await db.delete(doc)
+            await client.delete(
+                f"{_base_url()}/{TABLE}",
+                headers=_headers(),
+                params={"id": f"eq.{document_id}", "tenant_id": f"eq.{tenant_id}"},
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to delete document: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))

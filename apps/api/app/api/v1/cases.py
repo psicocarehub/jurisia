@@ -1,15 +1,20 @@
+import logging
 import uuid
+from datetime import datetime, timezone
 from typing import Optional
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import get_current_user, get_tenant_id, get_db
-from app.db.models import Case
+from app.config import settings
+from app.dependencies import get_current_user, get_tenant_id
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/cases", tags=["cases"])
+
+TABLE = "cases"
 
 
 class CaseCreate(BaseModel):
@@ -45,10 +50,13 @@ class CaseResponse(BaseModel):
     area: Optional[str] = None
     status: str = "active"
     client_name: Optional[str] = None
+    client_document: Optional[str] = None
     opposing_party: Optional[str] = None
     court: Optional[str] = None
     judge_name: Optional[str] = None
+    estimated_value: Optional[float] = None
     created_at: Optional[str] = None
+    updated_at: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -56,6 +64,38 @@ class CaseResponse(BaseModel):
 class CaseListResponse(BaseModel):
     cases: list[CaseResponse]
     total: int
+
+
+def _headers():
+    return {
+        "apikey": settings.SUPABASE_ANON_KEY,
+        "Authorization": f"Bearer {settings.SUPABASE_ANON_KEY}",
+        "Content-Type": "application/json",
+        "Prefer": "return=representation",
+    }
+
+
+def _base_url():
+    return f"{settings.SUPABASE_URL}/rest/v1"
+
+
+def _row_to_response(row: dict) -> CaseResponse:
+    return CaseResponse(
+        id=str(row.get("id", "")),
+        title=row.get("title", ""),
+        cnj_number=row.get("cnj_number"),
+        description=row.get("description"),
+        area=row.get("area"),
+        status=row.get("status", "active"),
+        client_name=row.get("client_name"),
+        client_document=row.get("client_document"),
+        opposing_party=row.get("opposing_party"),
+        court=row.get("court"),
+        judge_name=row.get("judge_name"),
+        estimated_value=row.get("estimated_value"),
+        created_at=row.get("created_at"),
+        updated_at=row.get("updated_at"),
+    )
 
 
 @router.get("", response_model=CaseListResponse)
@@ -66,37 +106,32 @@ async def list_cases(
     limit: int = 50,
     user: dict = Depends(get_current_user),
     tenant_id: str = Depends(get_tenant_id),
-    db: AsyncSession = Depends(get_db),
 ):
-    query = select(Case).where(Case.tenant_id == uuid.UUID(tenant_id))
+    params: dict = {
+        "select": "*",
+        "tenant_id": f"eq.{tenant_id}",
+        "order": "created_at.desc",
+        "offset": str(skip),
+        "limit": str(limit),
+    }
     if area:
-        query = query.where(Case.area == area)
+        params["area"] = f"eq.{area}"
     if status:
-        query = query.where(Case.status == status)
-    query = query.offset(skip).limit(limit)
+        params["status"] = f"eq.{status}"
 
-    result = await db.execute(query)
-    cases = result.scalars().all()
-
-    return CaseListResponse(
-        cases=[
-            CaseResponse(
-                id=str(c.id),
-                title=c.title,
-                cnj_number=c.cnj_number,
-                description=c.description,
-                area=c.area,
-                status=c.status,
-                client_name=c.client_name,
-                opposing_party=c.opposing_party,
-                court=c.court,
-                judge_name=c.judge_name,
-                created_at=str(c.created_at) if c.created_at else None,
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(
+                f"{_base_url()}/{TABLE}", headers=_headers(), params=params
             )
-            for c in cases
-        ],
-        total=len(cases),
-    )
+            resp.raise_for_status()
+            rows = resp.json()
+    except Exception as e:
+        logger.error("Failed to list cases: %s", e)
+        rows = []
+
+    cases = [_row_to_response(r) for r in rows]
+    return CaseListResponse(cases=cases, total=len(cases))
 
 
 @router.post("", response_model=CaseResponse, status_code=201)
@@ -104,28 +139,39 @@ async def create_case(
     case_data: CaseCreate,
     user: dict = Depends(get_current_user),
     tenant_id: str = Depends(get_tenant_id),
-    db: AsyncSession = Depends(get_db),
 ):
-    case = Case(
-        tenant_id=uuid.UUID(tenant_id),
-        created_by=uuid.UUID(user["id"]),
+    case_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
+    payload = {
+        "id": case_id,
+        "tenant_id": tenant_id,
+        "created_at": now,
+        "updated_at": now,
+        "status": "active",
         **case_data.model_dump(exclude_none=True),
-    )
-    db.add(case)
-    await db.flush()
+    }
+    user_id = user.get("id", "")
+    if user_id:
+        payload["created_by"] = user_id
 
-    return CaseResponse(
-        id=str(case.id),
-        title=case.title,
-        cnj_number=case.cnj_number,
-        description=case.description,
-        area=case.area,
-        status=case.status,
-        client_name=case.client_name,
-        opposing_party=case.opposing_party,
-        court=case.court,
-        judge_name=case.judge_name,
-    )
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
+                f"{_base_url()}/{TABLE}", headers=_headers(), json=payload
+            )
+            if resp.status_code == 409 and "created_by" in payload:
+                payload.pop("created_by", None)
+                resp = await client.post(
+                    f"{_base_url()}/{TABLE}", headers=_headers(), json=payload
+                )
+            resp.raise_for_status()
+            rows = resp.json()
+            row = rows[0] if isinstance(rows, list) else rows
+    except Exception as e:
+        logger.error("Failed to create case: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+    return _row_to_response(row)
 
 
 @router.get("/{case_id}", response_model=CaseResponse)
@@ -133,31 +179,25 @@ async def get_case(
     case_id: str,
     user: dict = Depends(get_current_user),
     tenant_id: str = Depends(get_tenant_id),
-    db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(
-        select(Case).where(
-            Case.id == uuid.UUID(case_id),
-            Case.tenant_id == uuid.UUID(tenant_id),
-        )
-    )
-    case = result.scalar_one_or_none()
-    if not case:
-        raise HTTPException(status_code=404, detail="Case not found")
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(
+                f"{_base_url()}/{TABLE}",
+                headers={**_headers(), "Accept": "application/vnd.pgrst.object+json"},
+                params={"id": f"eq.{case_id}", "tenant_id": f"eq.{tenant_id}"},
+            )
+            if resp.status_code == 406:
+                raise HTTPException(status_code=404, detail="Case not found")
+            resp.raise_for_status()
+            row = resp.json()
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to get case: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
 
-    return CaseResponse(
-        id=str(case.id),
-        title=case.title,
-        cnj_number=case.cnj_number,
-        description=case.description,
-        area=case.area,
-        status=case.status,
-        client_name=case.client_name,
-        opposing_party=case.opposing_party,
-        court=case.court,
-        judge_name=case.judge_name,
-        created_at=str(case.created_at) if case.created_at else None,
-    )
+    return _row_to_response(row)
 
 
 @router.patch("/{case_id}", response_model=CaseResponse)
@@ -166,37 +206,33 @@ async def update_case(
     case_data: CaseUpdate,
     user: dict = Depends(get_current_user),
     tenant_id: str = Depends(get_tenant_id),
-    db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(
-        select(Case).where(
-            Case.id == uuid.UUID(case_id),
-            Case.tenant_id == uuid.UUID(tenant_id),
-        )
-    )
-    case = result.scalar_one_or_none()
-    if not case:
-        raise HTTPException(status_code=404, detail="Case not found")
-
     update_data = case_data.model_dump(exclude_none=True)
-    for field, value in update_data.items():
-        setattr(case, field, value)
+    if not update_data:
+        raise HTTPException(status_code=400, detail="No data to update")
 
-    await db.flush()
+    update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
 
-    return CaseResponse(
-        id=str(case.id),
-        title=case.title,
-        cnj_number=case.cnj_number,
-        description=case.description,
-        area=case.area,
-        status=case.status,
-        client_name=case.client_name,
-        opposing_party=case.opposing_party,
-        court=case.court,
-        judge_name=case.judge_name,
-        created_at=str(case.created_at) if case.created_at else None,
-    )
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.patch(
+                f"{_base_url()}/{TABLE}",
+                headers=_headers(),
+                params={"id": f"eq.{case_id}", "tenant_id": f"eq.{tenant_id}"},
+                json=update_data,
+            )
+            resp.raise_for_status()
+            rows = resp.json()
+            if not rows:
+                raise HTTPException(status_code=404, detail="Case not found")
+            row = rows[0] if isinstance(rows, list) else rows
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to update case: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+    return _row_to_response(row)
 
 
 @router.delete("/{case_id}", status_code=204)
@@ -204,16 +240,15 @@ async def delete_case(
     case_id: str,
     user: dict = Depends(get_current_user),
     tenant_id: str = Depends(get_tenant_id),
-    db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(
-        select(Case).where(
-            Case.id == uuid.UUID(case_id),
-            Case.tenant_id == uuid.UUID(tenant_id),
-        )
-    )
-    case = result.scalar_one_or_none()
-    if not case:
-        raise HTTPException(status_code=404, detail="Case not found")
-
-    await db.delete(case)
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.delete(
+                f"{_base_url()}/{TABLE}",
+                headers=_headers(),
+                params={"id": f"eq.{case_id}", "tenant_id": f"eq.{tenant_id}"},
+            )
+            resp.raise_for_status()
+    except Exception as e:
+        logger.error("Failed to delete case: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
