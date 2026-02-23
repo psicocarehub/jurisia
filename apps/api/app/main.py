@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.router import api_router
 from app.config import settings
 from app.core.middleware import AuditMiddleware, TenantMiddleware
-from app.db.session import engine, init_db
+from app.db.session import engine
 
 if settings.SENTRY_DSN:
     sentry_sdk.init(
@@ -21,9 +21,13 @@ if settings.SENTRY_DSN:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await init_db()
+    import logging
+    logging.getLogger("jurisai").info("Juris.AI API starting — using Supabase REST API")
     yield
-    await engine.dispose()
+    try:
+        await engine.dispose()
+    except Exception:
+        pass
 
 
 app = FastAPI(

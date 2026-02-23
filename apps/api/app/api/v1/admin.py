@@ -1,14 +1,9 @@
-import uuid
-
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, EmailStr
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 
 from app.core.auth import create_access_token
 from app.core.security import hash_password, verify_password
-from app.db.models import Tenant, User
-from app.db.session import get_db
+from app.db.supabase_client import supabase_db
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -42,91 +37,80 @@ class TokenResponse(BaseModel):
 
 
 @router.post("/tenants", status_code=201)
-async def create_tenant(
-    data: TenantCreate,
-    db: AsyncSession = Depends(get_db),
-):
-    existing = await db.execute(select(Tenant).where(Tenant.slug == data.slug))
-    if existing.scalar_one_or_none():
+async def create_tenant(data: TenantCreate):
+    existing = await supabase_db.select("tenants", filters={"slug": data.slug})
+    if existing:
         raise HTTPException(status_code=409, detail="Tenant slug already exists")
 
-    tenant = Tenant(name=data.name, slug=data.slug, plan=data.plan)
-    db.add(tenant)
-    await db.flush()
-
-    return {"id": str(tenant.id), "name": tenant.name, "slug": tenant.slug}
+    tenant = await supabase_db.insert("tenants", {
+        "name": data.name,
+        "slug": data.slug,
+        "plan": data.plan,
+    })
+    return {"id": tenant["id"], "name": tenant["name"], "slug": tenant["slug"]}
 
 
 @router.post("/register", response_model=TokenResponse)
-async def register_user(
-    data: UserRegister,
-    db: AsyncSession = Depends(get_db),
-):
-    result = await db.execute(select(Tenant).where(Tenant.slug == data.tenant_slug))
-    tenant = result.scalar_one_or_none()
-    if not tenant:
+async def register_user(data: UserRegister):
+    tenants = await supabase_db.select("tenants", filters={"slug": data.tenant_slug})
+    if not tenants:
         raise HTTPException(status_code=404, detail="Tenant not found")
+    tenant = tenants[0]
 
-    existing = await db.execute(
-        select(User).where(User.tenant_id == tenant.id, User.email == data.email)
+    existing = await supabase_db.select(
+        "users", filters={"tenant_id": tenant["id"], "email": data.email}
     )
-    if existing.scalar_one_or_none():
+    if existing:
         raise HTTPException(status_code=409, detail="User already exists")
 
-    user = User(
-        tenant_id=tenant.id,
-        email=data.email,
-        name=data.name,
-        hashed_password=hash_password(data.password),
-        role=data.role,
-        oab_number=data.oab_number,
-    )
-    db.add(user)
-    await db.flush()
+    user = await supabase_db.insert("users", {
+        "tenant_id": tenant["id"],
+        "email": data.email,
+        "name": data.name,
+        "hashed_password": hash_password(data.password),
+        "role": data.role,
+        "oab_number": data.oab_number,
+    })
 
-    token = create_access_token(
-        data={
-            "sub": str(user.id),
-            "tenant_id": str(tenant.id),
-            "role": user.role,
-            "email": user.email,
-        }
-    )
+    token = create_access_token(data={
+        "sub": user["id"],
+        "tenant_id": tenant["id"],
+        "role": user["role"],
+        "email": user["email"],
+    })
 
     return TokenResponse(
-        access_token=token, tenant_id=str(tenant.id), user_id=str(user.id)
+        access_token=token, tenant_id=tenant["id"], user_id=user["id"]
     )
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(
-    data: LoginRequest,
-    db: AsyncSession = Depends(get_db),
-):
-    result = await db.execute(select(Tenant).where(Tenant.slug == data.tenant_slug))
-    tenant = result.scalar_one_or_none()
-    if not tenant:
+async def login(data: LoginRequest):
+    tenants = await supabase_db.select("tenants", filters={"slug": data.tenant_slug})
+    if not tenants:
         raise HTTPException(status_code=401, detail="Invalid credentials")
+    tenant = tenants[0]
 
-    result = await db.execute(
-        select(User).where(User.tenant_id == tenant.id, User.email == data.email)
+    users = await supabase_db.select(
+        "users", filters={"tenant_id": tenant["id"], "email": data.email}
     )
-    user = result.scalar_one_or_none()
-    if not user or not user.hashed_password:
+    if not users:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    user = users[0]
+
+    if not user.get("hashed_password"):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    if not verify_password(data.password, user.hashed_password):
+    if not verify_password(data.password, user["hashed_password"]):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    token = create_access_token(
-        data={
-            "sub": str(user.id),
-            "tenant_id": str(tenant.id),
-            "role": user.role,
-            "email": user.email,
-        }
-    )
+    token = create_access_token(data={
+        "sub": user["id"],
+        "tenant_id": tenant["id"],
+        "role": user["role"],
+        "email": user["email"],
+    })
 
     return TokenResponse(
-        access_token=token, tenant_id=str(tenant.id), user_id=str(user.id)
+        access_token=token, tenant_id=tenant["id"], user_id=user["id"]
     )
