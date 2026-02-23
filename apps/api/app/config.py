@@ -24,34 +24,41 @@ class Settings(BaseSettings):
     QDRANT_COLLECTION: str = "legal_documents"
 
     # LLM Providers
-    GAIA_BASE_URL: str = "http://localhost:8080/v1"
-    GAIA_MODEL_NAME: str = "gaia-legal-reasoning-v1"
+    GAIA_BASE_URL: str = ""
+    GAIA_MODEL_NAME: str = "CEIA-UFG/Gemma-3-Gaia-PT-BR-4b-it"
     DEEPSEEK_API_KEY: str = ""
     ANTHROPIC_API_KEY: str = ""
     OPENAI_API_KEY: str = ""
+    XAI_API_KEY: str = ""
     MARITACA_API_KEY: str = ""
 
-    # Embeddings
+    # Embeddings & Reranking (Voyage AI)
     VOYAGE_API_KEY: str = ""
-    EMBEDDING_MODEL: str = "voyage-law-2"
+    EMBEDDING_MODEL: str = "voyage-3-large"
     EMBEDDING_DIM: int = 1024
+    RERANK_MODEL: str = "voyage-rerank-2"
 
     # OCR
     PADDLE_OCR_ENDPOINT: str = ""
-    SURIYA_OCR_ENDPOINT: str = ""
+    FAL_API_KEY: str = ""
     AZURE_DOC_INTELLIGENCE_KEY: str = ""
     AZURE_DOC_INTELLIGENCE_ENDPOINT: str = ""
 
     # Ingestion
     DATAJUD_API_KEY: str = ""
 
-    # Storage
-    S3_BUCKET: str = "jurisai-documents"
+    # Storage (Supabase Storage)
+    S3_BUCKET: str = "documents"
     S3_ENDPOINT: str = ""
     S3_ACCESS_KEY: str = ""
     S3_SECRET_KEY: str = ""
 
-    # Langfuse
+    # Memory
+    SUPERMEMORY_API_KEY: str = ""
+
+    # Observability
+    SENTRY_DSN: str = ""
+    SENTRY_AUTH_TOKEN: str = ""
     LANGFUSE_PUBLIC_KEY: str = ""
     LANGFUSE_SECRET_KEY: str = ""
     LANGFUSE_HOST: str = "http://localhost:3001"
@@ -59,6 +66,10 @@ class Settings(BaseSettings):
     # Routing thresholds
     ROUTER_THRESHOLD_TIER1: float = 0.6
     ROUTER_THRESHOLD_TIER2: float = 0.85
+
+    # Auth
+    JWT_SECRET: str = ""
+    JWT_EXPIRES_IN: str = "24h"
 
     # CORS
     ALLOWED_ORIGINS: list[str] = ["http://localhost:3000", "http://localhost:3001"]

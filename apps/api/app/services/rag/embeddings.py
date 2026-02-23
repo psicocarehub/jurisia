@@ -1,5 +1,6 @@
 """
-Embedding service using Voyage AI voyage-law-2 for Brazilian legal documents.
+Embedding service using Voyage AI for Brazilian legal documents.
+Supports voyage-3-large (general) and voyage-law-2 (legal-specific).
 """
 
 from typing import List
@@ -10,12 +11,12 @@ from app.config import settings
 
 
 class EmbeddingService:
-    """Voyage AI voyage-law-2 embeddings for legal text."""
+    """Voyage AI embeddings for legal text (voyage-3-large / voyage-law-2)."""
 
     BASE_URL = "https://api.voyageai.com/v1"
 
-    def __init__(self) -> None:
-        self.model = settings.EMBEDDING_MODEL
+    def __init__(self, model: str | None = None) -> None:
+        self.model = model or settings.EMBEDDING_MODEL
         self.api_key = settings.VOYAGE_API_KEY
 
     async def embed_query(self, text: str) -> List[float]:

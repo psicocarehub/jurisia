@@ -1,16 +1,17 @@
 """
-Mem0 Client — extração e armazenamento de fatos.
-
-Cliente para Mem0 (fact extraction) com escopo por usuário.
+Memory Client using SuperMemory API for fact extraction and storage.
 """
 
 from typing import Any, Optional
 
+import httpx
 from pydantic import BaseModel
+
+from app.config import settings
 
 
 class Mem0Fact(BaseModel):
-    """Fato extraído/armazenado."""
+    """Fato extraido/armazenado."""
 
     id: str
     content: str
@@ -20,23 +21,25 @@ class Mem0Fact(BaseModel):
 
 class Mem0Client:
     """
-    Cliente para Mem0 — fact extraction e memória.
-
-    Fatos são escopados por user_id para isolamento.
+    Memory client backed by SuperMemory API.
+    Facts are scoped by user_id for tenant isolation.
     """
+
+    BASE_URL = "https://api.supermemory.ai/v1"
 
     def __init__(
         self,
-        url: Optional[str] = None,
+        api_key: Optional[str] = None,
         default_user_id: Optional[str] = None,
     ) -> None:
-        """
-        Args:
-            url: URL do serviço Mem0
-            default_user_id: User ID padrão para operações
-        """
-        self.url = url
+        self.api_key = api_key or settings.SUPERMEMORY_API_KEY
         self.default_user_id = default_user_id
+
+    def _headers(self) -> dict[str, str]:
+        return {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
 
     async def search(
         self,
@@ -44,20 +47,37 @@ class Mem0Client:
         user_id: Optional[str] = None,
         top_k: int = 10,
     ) -> list[Mem0Fact]:
-        """
-        Busca fatos por similaridade semântica.
+        """Search facts by semantic similarity."""
+        if not self.api_key:
+            return []
 
-        Args:
-            query: Texto de busca
-            user_id: Escopo do usuário (usa default se não informado)
-            top_k: Máximo de fatos a retornar
+        uid = user_id or self.default_user_id or "default"
 
-        Returns:
-            Lista de fatos relevantes (stub)
-        """
-        # Stub: implementação real via API Mem0
-        _ = query, user_id or self.default_user_id, top_k
-        return []
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.post(
+                    f"{self.BASE_URL}/search",
+                    headers=self._headers(),
+                    json={
+                        "query": query,
+                        "limit": top_k,
+                        "filters": {"user_id": uid},
+                    },
+                )
+                response.raise_for_status()
+                data = response.json()
+
+            results = []
+            for item in data.get("results", []):
+                results.append(Mem0Fact(
+                    id=item.get("id", ""),
+                    content=item.get("content", ""),
+                    metadata=item.get("metadata", {}),
+                    user_id=uid,
+                ))
+            return results
+        except (httpx.HTTPError, KeyError):
+            return []
 
     async def add(
         self,
@@ -65,17 +85,28 @@ class Mem0Client:
         user_id: Optional[str] = None,
         metadata: Optional[dict[str, Any]] = None,
     ) -> str:
-        """
-        Adiciona fato à memória do usuário.
+        """Add a fact to user's memory."""
+        if not self.api_key:
+            return ""
 
-        Args:
-            content: Conteúdo do fato
-            user_id: Escopo do usuário
-            metadata: Metadados opcionais
+        uid = user_id or self.default_user_id or "default"
 
-        Returns:
-            ID do fato criado (stub)
-        """
-        # Stub: implementação real via API Mem0
-        _ = content, user_id or self.default_user_id, metadata
-        return ""
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.post(
+                    f"{self.BASE_URL}/memories",
+                    headers=self._headers(),
+                    json={
+                        "content": content,
+                        "metadata": {
+                            **(metadata or {}),
+                            "user_id": uid,
+                            "source": "jurisai",
+                        },
+                    },
+                )
+                response.raise_for_status()
+                data = response.json()
+                return data.get("id", "")
+        except (httpx.HTTPError, KeyError):
+            return ""

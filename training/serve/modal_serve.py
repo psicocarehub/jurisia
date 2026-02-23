@@ -22,7 +22,7 @@ import modal
 # APP & IMAGE
 # ============================================
 
-app = modal.App("jurisai-gaia-serve")
+app = modal.App("jurisai-gaia-legal-reasoning")
 volume = modal.Volume.from_name("gaia-weights", create_if_missing=True)
 
 image = (
