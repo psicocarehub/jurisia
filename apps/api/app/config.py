@@ -52,6 +52,7 @@ class Settings(BaseSettings):
 
     # Ingestion
     DATAJUD_API_KEY: str = ""
+    DATAJUD_BASE_URL: str = "https://api-publica.datajud.cnj.jus.br"
     JUIT_API_KEY: str = ""
     JUIT_API_URL: str = "https://api.juit.dev"
     TRANSPARENCIA_API_KEY: str = ""
