@@ -13,6 +13,20 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
+
+@router.post("/demo-token")
+async def demo_token():
+    """Issue a demo JWT for unauthenticated frontend sessions."""
+    from app.core.auth import create_access_token
+    token = create_access_token({
+        "sub": f"demo-{uuid.uuid4().hex[:8]}",
+        "tenant_id": "__system__",
+        "role": "demo",
+        "email": "demo@jurisai.com.br",
+    })
+    return {"token": token}
+
+
 LEGAL_SYSTEM_PROMPT = (
     "Você é o Juris.AI, assistente jurídico especializado no direito brasileiro. "
     "Responda com precisão, citando artigos de lei, súmulas e jurisprudência quando pertinente. "

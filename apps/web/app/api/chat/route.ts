@@ -5,7 +5,17 @@ const API_URL = process.env.API_URL || 'http://localhost:8000';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const token = request.headers.get('authorization');
+    let token = request.headers.get('authorization');
+
+    if (!token) {
+      const demoResp = await fetch(`${API_URL}/api/v1/chat/demo-token`, {
+        method: 'POST',
+      });
+      if (demoResp.ok) {
+        const data = await demoResp.json();
+        token = `Bearer ${data.token}`;
+      }
+    }
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -17,7 +27,12 @@ export async function POST(request: NextRequest) {
     const response = await fetch(`${API_URL}/api/v1/chat/completions`, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ ...body, stream: true }),
+      body: JSON.stringify({
+        messages: body.messages,
+        stream: true,
+        use_rag: true,
+        use_memory: false,
+      }),
     });
 
     if (!response.ok) {
@@ -25,11 +40,73 @@ export async function POST(request: NextRequest) {
       return new Response(text, { status: response.status });
     }
 
-    return new Response(response.body, {
+    const reader = response.body?.getReader();
+    if (!reader) {
+      return new Response('No response body', { status: 500 });
+    }
+
+    const encoder = new TextEncoder();
+    const decoder = new TextDecoder();
+    const stream = new ReadableStream({
+      async start(controller) {
+        let buffer = '';
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+
+            for (const line of lines) {
+              const trimmed = line.trim();
+              if (!trimmed.startsWith('data: ')) continue;
+              const jsonStr = trimmed.slice(6);
+              if (!jsonStr || jsonStr === '[DONE]') continue;
+
+              try {
+                const evt = JSON.parse(jsonStr);
+
+                if (evt.type === 'token' && evt.content) {
+                  const text = evt.content;
+                  controller.enqueue(encoder.encode(`0:${JSON.stringify(text)}\n`));
+                } else if (evt.type === 'sources' && evt.sources) {
+                  const dataPayload = [{ sources: evt.sources }];
+                  controller.enqueue(
+                    encoder.encode(`2:${JSON.stringify(dataPayload)}\n`)
+                  );
+                } else if (evt.type === 'done') {
+                  controller.enqueue(
+                    encoder.encode(
+                      `d:${JSON.stringify({ finishReason: 'stop' })}\n`
+                    )
+                  );
+                } else if (evt.type === 'error') {
+                  const errText = evt.content || 'Erro desconhecido';
+                  controller.enqueue(encoder.encode(`0:${JSON.stringify(errText)}\n`));
+                }
+              } catch {
+                // skip unparseable lines
+              }
+            }
+          }
+
+          controller.enqueue(
+            encoder.encode(`d:${JSON.stringify({ finishReason: 'stop' })}\n`)
+          );
+        } catch (err) {
+          console.error('Stream transform error:', err);
+        } finally {
+          controller.close();
+        }
+      },
+    });
+
+    return new Response(stream, {
       headers: {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        Connection: 'keep-alive',
+        'Content-Type': 'text/plain; charset=utf-8',
+        'X-Vercel-AI-Data-Stream': 'v1',
       },
     });
   } catch (error) {

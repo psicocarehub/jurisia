@@ -1,6 +1,7 @@
 'use client';
 
 import { useChat } from 'ai/react';
+import { useState } from 'react';
 import { Send } from 'lucide-react';
 import { MessageBubble } from './MessageBubble';
 import { ThinkingIndicator } from './ThinkingIndicator';
@@ -8,15 +9,28 @@ import { SourceCitation, type Source } from './SourceCitation';
 import { cn } from '@/lib/utils';
 
 export function ChatInterface() {
+  const [sources, setSources] = useState<Source[]>([]);
+
   const getHeaders = (): Record<string, string> => {
     if (typeof window === 'undefined') return {};
     const token = localStorage.getItem('token');
     return token ? { Authorization: `Bearer ${token}` } : {};
   };
 
-  const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat({
+  const { messages, input, handleInputChange, handleSubmit, isLoading, data } = useChat({
     api: '/api/chat',
     headers: getHeaders(),
+    onResponse() {
+      setSources([]);
+    },
+    onFinish() {
+      if (data && data.length > 0) {
+        const lastData = data[data.length - 1] as { sources?: Source[] } | undefined;
+        if (lastData?.sources) {
+          setSources(lastData.sources);
+        }
+      }
+    },
   });
 
   return (
@@ -51,8 +65,8 @@ export function ChatInterface() {
                 >
                   <div className="space-y-2">
                     <MessageBubble role={m.role as 'user' | 'assistant'} content={m.content} />
-                    {m.role === 'assistant' && m.content && (
-                      <SourceCitation sources={extractSources(m)} />
+                    {m.role === 'assistant' && m.content && sources.length > 0 && (
+                      <SourceCitation sources={sources} />
                     )}
                   </div>
                 </div>
