@@ -6,14 +6,17 @@ Sources (celsowm collection):
   - Súmulas: STF (vinculantes + ordinárias), STJ
   - Legislação: CF/88, CC, CPC, CDC, CLT, CP, CPP, CTN, ECA, Lei Licitações
   - Modelos de petições
-  - Leis ordinárias federais
+  - Leis ordinárias federais (6.5k+)
+  - Verbetes vademecum jurídico (14.6k+)
 
 Usage:
     python scripts/ingest_huggingface.py --category all --limit 3000
-    python scripts/ingest_huggingface.py --category jurisprudencia --limit 2000
+    python scripts/ingest_huggingface.py --category jurisprudencia --limit 10000
     python scripts/ingest_huggingface.py --category sumulas
     python scripts/ingest_huggingface.py --category legislacao
     python scripts/ingest_huggingface.py --category peticoes
+    python scripts/ingest_huggingface.py --category vademecum
+    python scripts/ingest_huggingface.py --category leis_ordinarias --limit 6500
 """
 
 import argparse
@@ -113,15 +116,17 @@ def classify_area(text):
 # ============ DATASET LOADERS ============
 
 JURISPRUDENCIA_DATASETS = {
-    "STJ": ("celsowm/jurisprudencias_stj", 500),
-    "STF": ("celsowm/jurisprudencias_stf", 300),
-    "TJSP": ("celsowm/jurisprudencias_tjsp", 200),
-    "TJRJ": ("celsowm/jurisprudencias_tjrj", 200),
-    "TJMG": ("celsowm/jurisprudencias_tjmg", 200),
-    "TJDF": ("celsowm/jurisprudencias_tjdf", 200),
-    "TRF2": ("celsowm/jurisprudencias_trf2", 150),
-    "TRT1": ("celsowm/jurisprudencias_trt1", 150),
-    "TJPR": ("celsowm/jurisprudencias_tjpr", 100),
+    "STJ": ("celsowm/jurisprudencias_stj", 2000),
+    "STF": ("celsowm/jurisprudencias_stf", 1500),
+    "TJSP": ("celsowm/jurisprudencias_tjsp", 2000),
+    "TJRJ": ("celsowm/jurisprudencias_tjrj", 1000),
+    "TJMG": ("celsowm/jurisprudencias_tjmg", 2000),
+    "TJDF": ("celsowm/jurisprudencias_tjdf", 500),
+    "TRF2": ("celsowm/jurisprudencias_trf2", 500),
+    "TRT1": ("celsowm/jurisprudencias_trt1", 2000),
+    "TJPR": ("celsowm/jurisprudencias_tjpr", 500),
+    "TJMT": ("celsowm/jurisprudencias_tjmt", 500),
+    "TJPA": ("celsowm/jurisprudencias_tjpa", 500),
 }
 
 SUMULA_DATASETS = {
@@ -141,6 +146,12 @@ LEGISLACAO_DATASETS = {
     "CTN": "celsowm/codigo_tributario_lei_5172_1966",
     "ECA": "celsowm/eca_lei_13_07_1990",
     "Lei Licitações": "celsowm/lei_licitacoes_14133",
+    "CTB": "celsowm/ctb_codigo_de_transito_brasileiro_lei_9_503_1997",
+    "LEP": "celsowm/lei_execucao_penal_7_210_11_07_1984",
+    "Código Florestal": "celsowm/codigo_florestal_lei_25_05_12",
+    "Código Eleitoral": "celsowm/codigo_eleitoral_lei_15_07_95",
+    "Lei Migração": "celsowm/lei_migracao_L13445",
+    "Ética OAB": "celsowm/codigo_etica_e_disciplina_oab",
 }
 
 
@@ -249,7 +260,7 @@ def load_peticoes():
     return docs
 
 
-def load_leis_ordinarias(limit=500):
+def load_leis_ordinarias(limit=3000):
     logger.info("  Loading leis ordinárias federais (limit=%d)...", limit)
     docs = []
     try:
@@ -273,6 +284,114 @@ def load_leis_ordinarias(limit=500):
     except Exception as e:
         logger.error("  Error loading leis ordinárias: %s", e)
     logger.info("    Leis ordinárias: %d loaded", len(docs))
+    return docs
+
+
+def load_vademecum(limit=5000):
+    """Load verbetes from vademecum jurídico dataset (14.6k+ entries)."""
+    logger.info("  Loading vademecum jurídico (limit=%d)...", limit)
+    docs = []
+    try:
+        ds = load_dataset("celsowm/verbetes_vademecum_direito", split="train", streaming=True)
+        for i, row in enumerate(ds):
+            if i >= limit:
+                break
+            verbete = row.get("verbete", row.get("titulo", row.get("nome", "")))
+            texto = row.get("significado", row.get("texto", row.get("descricao", "")))
+            if not texto or len(texto) < 20:
+                continue
+            full_text = f"{verbete}: {texto}" if verbete else texto
+            docs.append({
+                "title": f"Vademecum: {verbete}"[:200] if verbete else f"Vademecum #{i}",
+                "court": "Doutrina",
+                "area": classify_area(full_text[:500]),
+                "date": "",
+                "content": full_text[:8000],
+                "source_id": verbete or f"vademecum_{i}",
+                "doc_type": "doutrina",
+            })
+    except Exception as e:
+        logger.error("  Error loading vademecum: %s", e)
+    logger.info("    Vademecum: %d loaded", len(docs))
+    return docs
+
+
+def load_leis_estaduais_rj(limit=3000):
+    """Load leis estaduais do RJ (8.8k+ entries)."""
+    logger.info("  Loading leis estaduais RJ (limit=%d)...", limit)
+    docs = []
+    try:
+        ds = load_dataset("celsowm/leis_estaduais_rj", split="train", streaming=True)
+        for i, row in enumerate(ds):
+            if i >= limit:
+                break
+            lei = row.get("lei", f"Lei RJ #{i}")
+            texto = row.get("texto") or ""
+            artigos = row.get("artigos", [])
+
+            if not texto and artigos:
+                parts = []
+                for art in artigos[:50]:
+                    if isinstance(art, dict):
+                        num = art.get("numero", "")
+                        txt = art.get("texto", "")
+                        if txt:
+                            parts.append(f"Art. {num}: {txt}")
+                texto = "\n".join(parts)
+
+            if not texto or len(texto) < 50:
+                continue
+
+            docs.append({
+                "title": f"Lei RJ {lei}"[:200],
+                "court": "Legislacao",
+                "area": classify_area(texto[:500]),
+                "date": "",
+                "content": texto[:10000],
+                "source_id": f"lei_rj_{lei}",
+                "doc_type": "lei_estadual",
+            })
+    except Exception as e:
+        logger.error("  Error loading leis estaduais RJ: %s", e)
+    logger.info("    Leis estaduais RJ: %d loaded", len(docs))
+    return docs
+
+
+def load_simulado_oab(limit=1000):
+    """Load questões do simulado OAB (1k+ entries)."""
+    logger.info("  Loading simulado OAB (limit=%d)...", limit)
+    docs = []
+    try:
+        ds = load_dataset("celsowm/simulado_oab", split="train", streaming=True)
+        for i, row in enumerate(ds):
+            if i >= limit:
+                break
+            enunciado = row.get("enunciado", "")
+            if not enunciado or len(enunciado) < 30:
+                continue
+            disciplina = row.get("disciplina", "")
+            alternativas = row.get("alternativas", {})
+            resposta = row.get("resposta_correta", "")
+
+            full = f"QUESTÃO OAB - {disciplina}:\n{enunciado}"
+            if isinstance(alternativas, dict):
+                for letra, texto in alternativas.items():
+                    full += f"\n{letra}) {texto}"
+            if resposta:
+                full += f"\n\nRESPOSTA CORRETA: {resposta}"
+
+            docs.append({
+                "title": f"OAB Simulado - {disciplina} #{i+1}"[:200],
+                "court": "OAB",
+                "area": classify_area(f"{disciplina} {enunciado}"),
+                "date": "",
+                "content": full[:8000],
+                "source_id": f"oab_simulado_{i}",
+                "doc_type": "simulado",
+            })
+    except Exception as e:
+        logger.error("  Error loading simulado OAB: %s", e)
+    logger.info("    Simulado OAB: %d loaded", len(docs))
     return docs
 
 
@@ -395,7 +514,10 @@ async def main(category, limit):
                         grand_total += n
                         logger.info("  %s: %d chunks indexed", name, n)
 
-                docs = load_leis_ordinarias(limit=500)
+            # Leis ordinárias
+            if category in ("leis_ordinarias", "legislacao", "all"):
+                logger.info("\n=== LEIS ORDINÁRIAS ===")
+                docs = load_leis_ordinarias(limit=limit if category == "leis_ordinarias" else 3000)
                 if docs:
                     n = await index_batch(docs, es, qdrant, http, "hf_leis_ordinarias")
                     grand_total += n
@@ -410,6 +532,33 @@ async def main(category, limit):
                     grand_total += n
                     logger.info("  Petições: %d chunks indexed", n)
 
+            # Vademecum
+            if category in ("vademecum", "all"):
+                logger.info("\n=== VADEMECUM JURÍDICO ===")
+                docs = load_vademecum(limit=limit if category == "vademecum" else 5000)
+                if docs:
+                    n = await index_batch(docs, es, qdrant, http, "hf_vademecum")
+                    grand_total += n
+                    logger.info("  Vademecum: %d chunks indexed", n)
+
+            # Leis estaduais RJ
+            if category in ("leis_estaduais", "all"):
+                logger.info("\n=== LEIS ESTADUAIS RJ ===")
+                docs = load_leis_estaduais_rj(limit=limit if category == "leis_estaduais" else 3000)
+                if docs:
+                    n = await index_batch(docs, es, qdrant, http, "hf_leis_estaduais_rj")
+                    grand_total += n
+                    logger.info("  Leis estaduais RJ: %d chunks indexed", n)
+
+            # Simulado OAB
+            if category in ("simulado_oab", "all"):
+                logger.info("\n=== SIMULADO OAB ===")
+                docs = load_simulado_oab(limit=limit if category == "simulado_oab" else 1000)
+                if docs:
+                    n = await index_batch(docs, es, qdrant, http, "hf_simulado_oab")
+                    grand_total += n
+                    logger.info("  Simulado OAB: %d chunks indexed", n)
+
             logger.info("\n" + "=" * 60)
             logger.info("GRAND TOTAL: %d chunks indexed", grand_total)
             logger.info("=" * 60)
@@ -423,9 +572,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Ingest HuggingFace legal datasets")
     parser.add_argument(
         "--category",
-        choices=["jurisprudencia", "sumulas", "legislacao", "peticoes", "all"],
+        choices=[
+            "jurisprudencia", "sumulas", "legislacao", "leis_ordinarias",
+            "peticoes", "vademecum", "leis_estaduais", "simulado_oab", "all",
+        ],
         default="all",
     )
-    parser.add_argument("--limit", type=int, default=3000)
+    parser.add_argument("--limit", type=int, default=5000)
     args = parser.parse_args()
     asyncio.run(main(args.category, args.limit))
