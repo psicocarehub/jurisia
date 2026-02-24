@@ -4,7 +4,6 @@ Hybrid RAG Retriever: BM25 (Elasticsearch) + Dense (Qdrant) with RRF fusion.
 Uses ES 8.16+ native RRF when available, fallback to manual RRF merge.
 """
 
-from dataclasses import dataclass
 from typing import List, Optional
 
 from qdrant_client.models import Filter, FieldCondition, MatchValue
@@ -12,22 +11,7 @@ from qdrant_client.models import Filter, FieldCondition, MatchValue
 from app.config import settings
 from app.services.clients import create_es_client, create_qdrant_client
 from app.services.rag.embeddings import EmbeddingService
-from app.services.rag.reranker import RerankerService
-
-
-@dataclass
-class RetrievedChunk:
-    """Chunk retrieved from RAG search."""
-
-    id: str
-    content: str
-    score: float
-    document_id: str
-    document_title: str
-    doc_type: str
-    court: str
-    date: str
-    metadata: dict
+from app.services.rag.models import RetrievedChunk
 
 
 class HybridRetriever:
@@ -39,6 +23,7 @@ class HybridRetriever:
         self.es = create_es_client()
         self.qdrant = create_qdrant_client()
         self.embedder = EmbeddingService()
+        from app.services.rag.reranker import RerankerService
         self.reranker = RerankerService()
 
     async def retrieve(
@@ -230,9 +215,9 @@ class HybridRetriever:
                     FieldCondition(key="court", match=MatchValue(value=filters["court"]))
                 )
 
-        results = await self.qdrant.search(
+        results = await self.qdrant.query_points(
             collection_name=settings.QDRANT_COLLECTION,
-            query_vector=embedding,
+            query=embedding,
             query_filter=qdrant_filter,
             limit=top_k,
             with_payload=True,
@@ -250,7 +235,7 @@ class HybridRetriever:
                 date=r.payload.get("date", ""),
                 metadata=r.payload.get("metadata", {}),
             )
-            for r in results
+            for r in results.points
         ]
 
     def _merge_results(

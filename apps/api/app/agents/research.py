@@ -2,7 +2,8 @@
 Research agent: RAG retrieval + LLM generation.
 """
 
-from app.services.rag.retriever import HybridRetriever, RetrievedChunk
+from app.services.rag.models import RetrievedChunk
+from app.services.rag.retriever import HybridRetriever
 from app.services.llm.router import LLMRouter
 from langchain_core.messages import AIMessage
 

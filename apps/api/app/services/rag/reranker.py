@@ -7,7 +7,7 @@ from typing import List
 import httpx
 
 from app.config import settings
-from app.services.rag.retriever import RetrievedChunk
+from app.services.rag.models import RetrievedChunk
 
 
 class RerankerService:

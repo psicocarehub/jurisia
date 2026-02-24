@@ -21,7 +21,7 @@ class LLMRouter:
     def model_tiers(self) -> dict:
         tiers = {}
 
-        if settings.GAIA_BASE_URL:
+        if settings.GAIA_BASE_URL and settings.GAIA_BASE_URL.startswith("http"):
             tiers["low"] = {
                 "model": f"openai/{settings.GAIA_MODEL_NAME}",
                 "api_base": settings.GAIA_BASE_URL,
@@ -72,7 +72,7 @@ class LLMRouter:
 
         if settings.ANTHROPIC_API_KEY:
             tiers["high_opus"] = {
-                "model": "anthropic/claude-opus-4-20260120",
+                "model": "anthropic/claude-opus-4-6",
                 "api_key": settings.ANTHROPIC_API_KEY,
             }
 
@@ -133,32 +133,54 @@ class LLMRouter:
         tier: Optional[str] = None,
         **kwargs,
     ) -> dict:
+        import logging
+        logger = logging.getLogger(__name__)
+
         query = messages[-1]["content"] if messages else ""
         selected_tier = self._select_tier(query, tier)
         selected_tier = self._get_available_tier(selected_tier)
-        model_config = self.model_tiers[selected_tier]
 
-        response = await acompletion(
-            model=model_config["model"],
-            messages=messages,
-            api_base=model_config.get("api_base"),
-            api_key=model_config.get("api_key"),
-            stream=stream,
-            max_tokens=kwargs.get("max_tokens", 4096),
-            temperature=kwargs.get("temperature", 0.7),
-        )
+        tried_tiers: set[str] = set()
+        fallback_order = ["medium", "high", "high_opus", "high_openai", "medium_qwen",
+                          "medium_agent", "medium_minimax", "medium_x", "medium_pt", "low"]
 
-        if stream:
-            return response
+        while True:
+            model_config = self.model_tiers[selected_tier]
+            tried_tiers.add(selected_tier)
 
-        return {
-            "content": response.choices[0].message.content,
-            "model": model_config["model"],
-            "tier": selected_tier,
-            "tokens_input": response.usage.prompt_tokens if response.usage else 0,
-            "tokens_output": response.usage.completion_tokens if response.usage else 0,
-            "thinking": getattr(response.choices[0].message, "reasoning_content", ""),
-        }
+            try:
+                response = await acompletion(
+                    model=model_config["model"],
+                    messages=messages,
+                    api_base=model_config.get("api_base"),
+                    api_key=model_config.get("api_key"),
+                    stream=stream,
+                    max_tokens=kwargs.get("max_tokens", 4096),
+                    temperature=kwargs.get("temperature", 0.7),
+                )
+
+                if stream:
+                    return response
+
+                return {
+                    "content": response.choices[0].message.content,
+                    "model": model_config["model"],
+                    "tier": selected_tier,
+                    "tokens_input": response.usage.prompt_tokens if response.usage else 0,
+                    "tokens_output": response.usage.completion_tokens if response.usage else 0,
+                    "thinking": getattr(response.choices[0].message, "reasoning_content", ""),
+                }
+            except Exception as e:
+                logger.warning("LLM tier '%s' (%s) failed: %s", selected_tier, model_config["model"], e)
+                next_tier = None
+                for t in fallback_order:
+                    if t not in tried_tiers and t in self.model_tiers:
+                        next_tier = t
+                        break
+                if next_tier is None:
+                    raise
+                logger.info("Falling back to tier '%s'", next_tier)
+                selected_tier = next_tier
 
     async def quick_classify(self, prompt: str) -> str:
         result = await self.generate(
