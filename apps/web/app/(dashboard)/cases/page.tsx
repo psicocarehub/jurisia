@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { apiFetch, apiPost } from '@/lib/api';
+import { useToast } from '@/components/toast';
 import {
   Briefcase,
   Plus,
@@ -42,6 +43,7 @@ export default function CasesPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterArea, setFilterArea] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
+  const { error: showError, success: showSuccess } = useToast();
 
   const fetchCases = useCallback(async () => {
     setLoading(true);
@@ -54,8 +56,8 @@ export default function CasesPage() {
         const data = await res.json();
         setCases(data.cases || []);
       }
-    } catch {
-      // silently fail
+    } catch (e) {
+      showError('Erro ao carregar casos');
     } finally {
       setLoading(false);
     }
@@ -81,8 +83,9 @@ export default function CasesPage() {
       await apiFetch(`/api/v1/cases/${id}`, { method: 'DELETE' });
       setCases((prev) => prev.filter((c) => c.id !== id));
       if (selectedCase?.id === id) setSelectedCase(null);
+      showSuccess('Caso excluído');
     } catch {
-      // silently fail
+      showError('Erro ao excluir caso');
     }
   };
 
@@ -260,6 +263,7 @@ function CreateCaseModal({
   onClose: () => void;
   onCreated: (c: Case) => void;
 }) {
+  const { error: showError } = useToast();
   const [form, setForm] = useState({
     title: '',
     cnj_number: '',
@@ -273,10 +277,24 @@ function CreateCaseModal({
     estimated_value: '',
   });
   const [saving, setSaving] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const validate = (): boolean => {
+    const errs: Record<string, string> = {};
+    if (!form.title.trim()) errs.title = 'Título é obrigatório';
+    if (form.cnj_number && !/^\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}$/.test(form.cnj_number)) {
+      errs.cnj_number = 'Formato inválido (0000000-00.0000.0.00.0000)';
+    }
+    if (form.estimated_value && (isNaN(parseFloat(form.estimated_value)) || parseFloat(form.estimated_value) < 0)) {
+      errs.estimated_value = 'Valor inválido';
+    }
+    setErrors(errs);
+    return Object.keys(errs).length === 0;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.title.trim()) return;
+    if (!validate()) return;
 
     setSaving(true);
     try {
@@ -287,7 +305,7 @@ function CreateCaseModal({
       const res = await apiPost<Case>('/api/v1/cases', body);
       onCreated(res);
     } catch {
-      alert('Erro ao criar caso');
+      showError('Erro ao criar caso');
     } finally {
       setSaving(false);
     }
@@ -306,21 +324,23 @@ function CreateCaseModal({
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Título *</label>
             <input
-              className="input-field text-sm"
+              className={`input-field text-sm ${errors.title ? 'border-red-400 ring-1 ring-red-400' : ''}`}
               value={form.title}
-              onChange={(e) => setForm({ ...form, title: e.target.value })}
+              onChange={(e) => { setForm({ ...form, title: e.target.value }); setErrors((prev) => ({ ...prev, title: '' })); }}
               required
             />
+            {errors.title && <p className="text-xs text-red-500 mt-1">{errors.title}</p>}
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Número CNJ</label>
               <input
-                className="input-field text-sm"
+                className={`input-field text-sm ${errors.cnj_number ? 'border-red-400 ring-1 ring-red-400' : ''}`}
                 placeholder="0000000-00.0000.0.00.0000"
                 value={form.cnj_number}
-                onChange={(e) => setForm({ ...form, cnj_number: e.target.value })}
+                onChange={(e) => { setForm({ ...form, cnj_number: e.target.value }); setErrors((prev) => ({ ...prev, cnj_number: '' })); }}
               />
+              {errors.cnj_number && <p className="text-xs text-red-500 mt-1">{errors.cnj_number}</p>}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Área</label>

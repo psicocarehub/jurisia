@@ -1,10 +1,18 @@
 """
-Legal NER: Transformer (pierreguillou/ner-bert-large-cased-pt-lenerbr) + RegEx.
+Legal NER: Fine-tuned local model with HuggingFace fallback + RegEx.
 """
 
+from __future__ import annotations
+
+import logging
+from pathlib import Path
 from typing import List
 
 from app.services.ocr.postprocess import LegalPostProcessor, LegalEntity
+
+logger = logging.getLogger(__name__)
+
+LOCAL_NER_DIR = Path(__file__).resolve().parents[5] / "training" / "models" / "ner_legal" / "model"
 
 
 class LegalNERService:
@@ -15,19 +23,31 @@ class LegalNERService:
         self._ner_pipeline = None
 
     def _load_ner(self) -> bool:
-        """Lazy load transformers NER pipeline."""
+        """Lazy load NER pipeline: local fine-tuned model first, then HuggingFace."""
         if self._ner_pipeline is not None:
             return True
         try:
             from transformers import pipeline
 
+            if LOCAL_NER_DIR.exists() and (LOCAL_NER_DIR / "config.json").exists():
+                self._ner_pipeline = pipeline(
+                    "ner", model=str(LOCAL_NER_DIR), aggregation_strategy="simple",
+                )
+                logger.info("Loaded local fine-tuned NER model")
+                return True
+        except Exception as e:
+            logger.warning("Failed to load local NER: %s", e)
+
+        try:
+            from transformers import pipeline
             self._ner_pipeline = pipeline(
                 "ner",
                 model="pierreguillou/ner-bert-large-cased-pt-lenerbr",
                 aggregation_strategy="simple",
             )
             return True
-        except Exception:
+        except Exception as e:
+            logger.warning("Failed to load HuggingFace NER fallback: %s", e)
             return False
 
     def extract_entities(self, text: str) -> List[LegalEntity]:
@@ -50,7 +70,8 @@ class LegalNERService:
                                 confidence=float(ent.get("score", 0.8)),
                             )
                         )
-                except Exception:
+                except Exception as e:
+                    logger.warning("NER chunk extraction failed: %s", e)
                     continue
 
         # 2. RegEx entities

@@ -20,9 +20,11 @@ from typing import Any
 import modal
 
 app = modal.App("jurisai-gaia-legal-reasoning")
-volume = modal.Volume.from_name("gaia-weights", create_if_missing=True)
+base_volume = modal.Volume.from_name("gaia-weights", create_if_missing=True)
+trained_volume = modal.Volume.from_name("jurisai-trained-models", create_if_missing=True)
 
 MODEL_ID = "CEIA-UFG/Gemma-3-Gaia-PT-BR-4b-it"
+LORA_ADAPTER_PATH = "/trained/gaia_sft_model"
 
 image = (
     modal.Image.debian_slim(python_version="3.12")
@@ -49,14 +51,14 @@ def format_chat_prompt(messages: list[dict[str, str]]) -> str:
 @app.cls(
     image=image,
     gpu="L4",
-    volumes={"/models": volume},
+    volumes={"/models": base_volume, "/trained": trained_volume},
     container_idle_timeout=300,
     allow_concurrent_inputs=10,
     min_containers=0,
     max_containers=3,
 )
 class GaiaServe:
-    """vLLM-powered inference for GAIA Legal Reasoning."""
+    """vLLM-powered inference for GAIA Legal Reasoning with SFT LoRA adapters."""
 
     @modal.enter()
     def load_model(self) -> None:
@@ -69,13 +71,21 @@ class GaiaServe:
             from huggingface_hub import snapshot_download
             snapshot_download(MODEL_ID, local_dir=model_path)
 
+        lora_path = LORA_ADAPTER_PATH if Path(LORA_ADAPTER_PATH).exists() else None
+
         self.llm = LLM(
             model=model_path,
             dtype="auto",
             max_model_len=8192,
             gpu_memory_utilization=0.90,
             trust_remote_code=True,
+            enable_lora=lora_path is not None,
+            max_lora_rank=64,
         )
+
+        self._lora_path = lora_path
+        if lora_path:
+            print(f"LoRA SFT adapters loaded from {lora_path}")
 
     @modal.method()
     def generate(
@@ -84,17 +94,26 @@ class GaiaServe:
         max_tokens: int = 4096,
         temperature: float = 0.7,
     ) -> dict[str, Any]:
-        params = self.SamplingParams(
+        from vllm import SamplingParams
+        from vllm.lora.request import LoRARequest
+
+        params = SamplingParams(
             temperature=temperature,
             max_tokens=max_tokens,
             top_p=0.95,
         )
-        outputs = self.llm.generate([prompt], params)
+
+        lora_req = None
+        if self._lora_path:
+            lora_req = LoRARequest("jurisai-sft", 1, self._lora_path)
+
+        outputs = self.llm.generate([prompt], params, lora_request=lora_req)
         out = outputs[0]
         return {
             "text": out.outputs[0].text,
             "tokens": len(out.outputs[0].token_ids),
             "finish_reason": out.outputs[0].finish_reason,
+            "lora_active": self._lora_path is not None,
         }
 
     @modal.method()

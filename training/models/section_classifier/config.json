@@ -1,0 +1,12 @@
+{
+  "labels": [
+    "ementa",
+    "relatorio",
+    "fundamentacao",
+    "dispositivo",
+    "cabecalho",
+    "generic"
+  ],
+  "cv_accuracy": 0.909090909090909,
+  "n_samples": 660
+}

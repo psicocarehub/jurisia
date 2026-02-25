@@ -18,6 +18,8 @@ from airflow.models import Variable
 from airflow.operators.python import PythonOperator
 from airflow.providers.postgres.hooks.postgres import PostgresHook
 
+from _content_updates_helper import insert_content_update
+
 TRIBUNAIS_PRIORITARIOS = [
     "stj", "tst", "tse",
     "trf1", "trf2", "trf3", "trf4", "trf5",
@@ -257,6 +259,19 @@ def ingest_tribunal(tribunal: str, **kwargs: Any) -> None:
                         await async_bulk(es, es_actions, raise_on_error=False)
                     if qd_points:
                         await qdrant.upsert(collection_name=settings.QDRANT_COLLECTION, points=qd_points)
+
+                    for text, meta in zip(texts, metas):
+                        insert_content_update(
+                            hook,
+                            source=f"datajud_{tribunal}",
+                            category="jurisprudencia",
+                            subcategory=meta.get("classe", "processo"),
+                            title=f"{meta['court']} - {meta['classe']} - {meta['numero']}"[:500],
+                            summary=text[:500],
+                            court_or_organ=meta.get("court", tribunal.upper()),
+                            territory="federal",
+                            publication_date=meta.get("date"),
+                        )
 
                     total += len(es_actions)
                     search_after = hits[-1].get("sort")

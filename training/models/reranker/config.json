@@ -1,0 +1,5 @@
+{
+  "type": "cross-encoder",
+  "base": "neuralmind/bert-base-portuguese-cased",
+  "n_train": 270
+}

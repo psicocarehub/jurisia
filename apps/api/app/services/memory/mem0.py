@@ -2,12 +2,15 @@
 Memory Client using SuperMemory API for fact extraction and storage.
 """
 
+import logging
 from typing import Any, Optional
 
 import httpx
 from pydantic import BaseModel
 
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class Mem0Fact(BaseModel):
@@ -76,7 +79,8 @@ class Mem0Client:
                     user_id=uid,
                 ))
             return results
-        except (httpx.HTTPError, KeyError):
+        except (httpx.HTTPError, KeyError) as e:
+            logger.warning("Mem0Client search failed: %s", e)
             return []
 
     async def add(
@@ -108,5 +112,6 @@ class Mem0Client:
                 response.raise_for_status()
                 data = response.json()
                 return data.get("id", "")
-        except (httpx.HTTPError, KeyError):
+        except (httpx.HTTPError, KeyError) as e:
+            logger.warning("Mem0Client add failed: %s", e)
             return ""

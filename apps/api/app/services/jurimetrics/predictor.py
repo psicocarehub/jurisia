@@ -45,13 +45,17 @@ class PredictionResult(BaseModel):
 class OutcomePredictor:
     """XGBoost-based outcome predictor with feature engineering."""
 
+    _DEFAULT_PATH = Path(__file__).resolve().parents[5] / "training" / "models" / "outcome_predictor" / "outcome_predictor.json"
+
     def __init__(self, model_path: Optional[str] = None) -> None:
-        self.model_path = model_path or "training/models/outcome_predictor.json"
+        self.model_path = model_path or str(self._DEFAULT_PATH)
         self._model = None
         self._feature_names = [
             "area_enc", "tribunal_enc", "valor_causa_log",
-            "num_partes", "tipo_acao_enc", "judge_favorability",
-            "court_procedencia_rate",
+            "num_partes", "tipo_acao_enc", "content_len",
+            "has_citation", "num_laws",
+            "n_jurisprud", "n_sumulas", "has_tutela",
+            "content_words_log", "has_recurso",
         ]
 
     def _load_model(self) -> bool:
@@ -72,6 +76,7 @@ class OutcomePredictor:
 
     def _extract_features(self, case_data: dict[str, Any]) -> list[float]:
         import math
+        import re
 
         area = (case_data.get("area", "") or "").lower().strip()
         area_enc = float(AREA_ENCODING.get(area, -1))
@@ -83,12 +88,29 @@ class OutcomePredictor:
         valor_log = math.log1p(valor)
 
         num_partes = float(case_data.get("num_partes", 2))
-        tipo_enc = float(hash(case_data.get("tipo_acao", "")) % 50)
 
-        judge_fav = float(case_data.get("judge_favorability", 50.0))
-        court_rate = float(case_data.get("court_procedencia_rate", 50.0))
+        content = case_data.get("content", "") or ""
+        low = content.lower()
+        tipo_map = {"cobrança": 1, "indenização": 2, "despejo": 3, "alimentos": 4,
+                    "divórcio": 5, "execução": 7, "trabalhista": 11, "usucapião": 12}
+        tipo_enc = 0.0
+        for t, c in tipo_map.items():
+            if t in low[:2000]:
+                tipo_enc = float(c)
+                break
 
-        return [area_enc, tribunal_enc, valor_log, num_partes, tipo_enc, judge_fav, court_rate]
+        content_len = math.log1p(len(content)) if content else 8.0
+        has_citation = 1.0 if re.search(r"(?:art\.?\s*\d+|lei\s+\d+|súmula\s+\d+)", low) else 0.0
+        num_laws = float(len(re.findall(r"(?:art\.?\s*\d+|lei\s+n?\.?\s*[\d.]+)", low)))
+        n_jurisprud = float(len(re.findall(r"(?:STF|STJ|TST|TJ\w{2}|TRF\d)", content)))
+        n_sumulas = float(len(re.findall(r"s[úu]mula\s+\d+", low)))
+        has_tutela = 1.0 if re.search(r"tutela\s+(?:provis|antecipada|urg)", low) else 0.0
+        content_words_log = math.log1p(len(content.split()))
+        has_recurso = 1.0 if re.search(r"recurso\s+(?:de\s+)?(?:apela|agravo|especial|extra)", low) else 0.0
+
+        return [area_enc, tribunal_enc, valor_log, num_partes, tipo_enc, content_len,
+                has_citation, num_laws, n_jurisprud, n_sumulas, has_tutela,
+                content_words_log, has_recurso]
 
     def predict(
         self,
@@ -147,10 +169,10 @@ class OutcomePredictor:
         self, case_data: dict[str, Any], area: str, features: list[float]
     ) -> PredictionResult:
         """Rule-based fallback prediction."""
-        judge_fav = features[5] if len(features) > 5 else 50.0
-        court_rate = features[6] if len(features) > 6 else 50.0
+        content_len = features[5] if len(features) > 5 else 8.0
+        has_citation = features[6] if len(features) > 6 else 0.0
 
-        base_score = (judge_fav + court_rate) / 200.0
+        base_score = min(0.6, content_len / 20.0) + (0.15 if has_citation else 0.0)
 
         probabilities = {
             "procedente": round(base_score * 0.5, 3),
@@ -166,10 +188,9 @@ class OutcomePredictor:
             confidence=round(probabilities[best], 3),
             probabilities=probabilities,
             factors=[
-                {"name": "Nota", "value": "Predição heurística (modelo XGBoost não treinado)"},
-                {"name": "Taxa base do tribunal", "value": f"{court_rate:.0f}%"},
+                {"name": "Nota", "value": "Predição heurística (modelo XGBoost não disponível)"},
             ],
-            warning="Predição baseada em heurística — modelo XGBoost ainda não treinado com dados reais.",
+            warning="Predição baseada em heurística — modelo XGBoost não carregado.",
         )
 
     def _explain_factors(
@@ -179,12 +200,18 @@ class OutcomePredictor:
         factors = []
         if features[0] >= 0:
             area_name = case_data.get("area", "desconhecida")
-            factors.append({"name": "Área", "value": area_name, "importance": 0.25})
+            factors.append({"name": "Área", "value": area_name, "importance": 0.20})
         if features[1] >= 0:
             tribunal = case_data.get("tribunal", case_data.get("court", ""))
-            factors.append({"name": "Tribunal", "value": tribunal, "importance": 0.2})
+            factors.append({"name": "Tribunal", "value": tribunal, "importance": 0.15})
         if features[2] > 0:
-            factors.append({"name": "Valor da causa (log)", "value": round(features[2], 2), "importance": 0.15})
-        if features[5] != 50.0:
-            factors.append({"name": "Favorabilidade do juiz", "value": f"{features[5]:.1f}%", "importance": 0.3})
+            factors.append({"name": "Valor da causa (log)", "value": round(features[2], 2), "importance": 0.10})
+        if features[6] > 0:
+            factors.append({"name": "Citações legais", "value": "Sim", "importance": 0.15})
+        if features[7] > 0:
+            factors.append({"name": "Leis citadas", "value": int(features[7]), "importance": 0.10})
+        if features[8] > 0:
+            factors.append({"name": "Referências jurisprudenciais", "value": int(features[8]), "importance": 0.15})
+        if features[10] > 0:
+            factors.append({"name": "Pedido de tutela", "value": "Sim", "importance": 0.10})
         return factors

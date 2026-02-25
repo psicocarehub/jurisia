@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { Settings, User, Bell, Shield, Building2 } from 'lucide-react';
+import { useToast } from '@/components/toast';
+import { apiFetch, apiPost } from '@/lib/api';
 
 interface UserProfile {
   name: string;
@@ -47,7 +49,8 @@ export default function SettingsPage() {
     alertAreas: [],
     alertTribunais: [],
   });
-  const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const { success: showSuccess, error: showError } = useToast();
 
   useEffect(() => {
     const stored = localStorage.getItem('jurisai_prefs');
@@ -55,7 +58,7 @@ export default function SettingsPage() {
       try {
         setPrefs(JSON.parse(stored));
       } catch {
-        // ignore
+        // ignore corrupt data
       }
     }
     const storedProfile = localStorage.getItem('jurisai_profile');
@@ -63,16 +66,35 @@ export default function SettingsPage() {
       try {
         setProfile(JSON.parse(storedProfile));
       } catch {
-        // ignore
+        // ignore corrupt data
       }
     }
   }, []);
 
-  const handleSave = () => {
-    localStorage.setItem('jurisai_prefs', JSON.stringify(prefs));
-    localStorage.setItem('jurisai_profile', JSON.stringify(profile));
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      localStorage.setItem('jurisai_prefs', JSON.stringify(prefs));
+      localStorage.setItem('jurisai_profile', JSON.stringify(profile));
+
+      if (prefs.alertAreas.length > 0) {
+        try {
+          await apiPost('/api/v1/alerts/subscribe', {
+            user_id: profile.email || 'anonymous',
+            tenant_id: '__system__',
+            areas: prefs.alertAreas,
+          });
+        } catch {
+          // subscription will sync on next login
+        }
+      }
+
+      showSuccess('Configurações salvas');
+    } catch {
+      showError('Erro ao salvar configurações');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const toggleArea = (area: string) => {
@@ -212,9 +234,8 @@ export default function SettingsPage() {
         )}
 
         <div className="flex justify-end mt-6 pt-4 border-t">
-          {saved && <span className="text-sm text-green-600 mr-3 mt-2">Salvo com sucesso!</span>}
-          <button onClick={handleSave} className="btn-primary text-sm">
-            Salvar Alterações
+          <button onClick={handleSave} disabled={saving} className="btn-primary text-sm">
+            {saving ? 'Salvando...' : 'Salvar Alterações'}
           </button>
         </div>
       </div>

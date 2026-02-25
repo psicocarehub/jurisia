@@ -15,6 +15,8 @@ from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.providers.postgres.hooks.postgres import PostgresHook
 
+from _content_updates_helper import insert_content_update
+
 DEFAULT_ARGS = {
     "owner": "jurisai",
     "depends_on_past": False,
@@ -138,18 +140,32 @@ def ingest_querido_diario_federal(**kwargs: Any) -> None:
                 excerpt = item.get("excerpts", [""])[0] if item.get("excerpts") else ""
                 title = _extract_title(excerpt, keyword)
 
+                doc_type = _classify_doc_type(keyword)
+                doc_url = item.get("url", "")
                 hook.run("""
                     INSERT INTO dou_documents (doc_type, title, ementa, publication_date, source_url, metadata)
                     VALUES (%s, %s, %s, %s::date, %s, %s::jsonb)
                     ON CONFLICT DO NOTHING
                 """, parameters=(
-                    _classify_doc_type(keyword),
+                    doc_type,
                     title,
                     excerpt[:2000],
                     pub_date,
-                    item.get("url", ""),
+                    doc_url,
                     '{"source": "querido_diario", "territory_id": "' + item.get("territory_id", "") + '"}',
                 ))
+                insert_content_update(
+                    hook,
+                    source="dou",
+                    category="legislacao",
+                    subcategory=doc_type,
+                    title=title,
+                    summary=excerpt[:2000],
+                    publication_date=pub_date,
+                    source_url=doc_url,
+                    territory="federal",
+                    court_or_organ="DOU",
+                )
                 total_count += 1
                 if pub_date > max_date:
                     max_date = pub_date
@@ -225,6 +241,19 @@ def ingest_planalto_legislation(**kwargs: Any) -> None:
                     """, parameters=(
                         doc_type, number, title, ementa, text[:50000], pub_date, link,
                     ))
+                    insert_content_update(
+                        hook,
+                        source="planalto",
+                        category="legislacao",
+                        subcategory=doc_type,
+                        title=title,
+                        summary=ementa,
+                        content_preview=text[:500],
+                        publication_date=pub_date,
+                        source_url=link,
+                        territory="federal",
+                        court_or_organ="Planalto",
+                    )
                     total_count += 1
                     if pub_date > max_date:
                         max_date = pub_date

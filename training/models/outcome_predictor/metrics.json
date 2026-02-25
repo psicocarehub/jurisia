@@ -1,0 +1,19 @@
+{
+  "accuracy_cv": 0.8758951406649617,
+  "n_samples": 1958,
+  "features": [
+    "area_enc",
+    "tribunal_enc",
+    "valor_causa_log",
+    "num_partes",
+    "tipo_acao_enc",
+    "content_len",
+    "has_citation",
+    "num_laws",
+    "n_jurisprud",
+    "n_sumulas",
+    "has_tutela",
+    "content_words_log",
+    "has_recurso"
+  ]
+}

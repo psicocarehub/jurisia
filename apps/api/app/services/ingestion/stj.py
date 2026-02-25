@@ -5,10 +5,13 @@ Full decision text (unlike DataJud metadata-only).
 
 import csv
 import io
+import logging
 from datetime import date
 from typing import Any, AsyncGenerator, Optional
 
 import httpx
+
+logger = logging.getLogger("jurisai.stj")
 
 
 class STJOpenDataClient:
@@ -38,5 +41,5 @@ class STJOpenDataClient:
                         except (ValueError, KeyError):
                             pass
                     yield dict(row)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.error("STJ stream_decisions failed: %s", e)

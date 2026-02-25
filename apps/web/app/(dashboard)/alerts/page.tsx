@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { apiFetch } from '@/lib/api';
+import { useToast } from '@/components/toast';
 import {
   Bell,
   CheckCheck,
@@ -43,6 +44,7 @@ export default function AlertsPage() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
   const [selected, setSelected] = useState<Alert | null>(null);
+  const { error: showError } = useToast();
 
   const fetchAlerts = useCallback(async () => {
     setLoading(true);
@@ -53,7 +55,7 @@ export default function AlertsPage() {
         setAlerts(data.alerts || []);
       }
     } catch {
-      // silently fail
+      showError('Erro ao carregar alertas');
     } finally {
       setLoading(false);
     }
@@ -69,7 +71,7 @@ export default function AlertsPage() {
       setAlerts((prev) => prev.map((a) => (a.id === id ? { ...a, is_read: true } : a)));
       if (selected?.id === id) setSelected({ ...selected, is_read: true });
     } catch {
-      // silently fail
+      showError('Erro ao marcar alerta como lido');
     }
   };
 
@@ -78,7 +80,7 @@ export default function AlertsPage() {
       await apiFetch('/api/v1/alerts/read-all', { method: 'PATCH' });
       setAlerts((prev) => prev.map((a) => ({ ...a, is_read: true })));
     } catch {
-      // silently fail
+      showError('Erro ao marcar alertas como lidos');
     }
   };
 

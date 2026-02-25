@@ -1,0 +1,21 @@
+{
+  "labels": [
+    "high",
+    "low",
+    "medium"
+  ],
+  "label2id": {
+    "high": 0,
+    "low": 1,
+    "medium": 2
+  },
+  "cv_accuracy": 0.796923076923077,
+  "best_params": {
+    "clf__estimator__C": "2.0",
+    "clf__estimator__max_iter": "5000",
+    "tfidf__max_features": "10000",
+    "tfidf__ngram_range": "(2, 5)",
+    "tfidf__sublinear_tf": "True"
+  },
+  "num_samples": 650
+}

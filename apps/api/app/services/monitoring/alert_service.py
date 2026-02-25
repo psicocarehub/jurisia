@@ -128,7 +128,8 @@ class AlertService:
             results = await supabase_db.select(ALERT_TABLE, filters=filters)
             if not isinstance(results, list):
                 results = [results] if results else []
-        except Exception:
+        except Exception as e:
+            logger.warning("Failed to fetch alerts: %s", e)
             return []
 
         if areas:
@@ -230,7 +231,8 @@ class AlertService:
             )
             if not isinstance(subs, list):
                 return
-        except Exception:
+        except Exception as e:
+            logger.warning("Failed to fetch alert subscriptions: %s", e)
             return
 
         for sub in subs:
@@ -263,7 +265,8 @@ class AlertService:
                         "tenant_id": tenant_id,
                         "user_id": user_id,
                     })
-                except Exception:
+                except Exception as e:
+                    logger.warning("Failed to create user alert for %s: %s", user_id, e)
                     continue
 
     async def _mark_affected_documents(self, change: LawChange) -> None:

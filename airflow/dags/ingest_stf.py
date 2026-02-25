@@ -12,6 +12,8 @@ from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.providers.postgres.hooks.postgres import PostgresHook
 
+from _content_updates_helper import insert_content_update
+
 DEFAULT_ARGS = {
     "owner": "jurisai",
     "depends_on_past": False,
@@ -46,6 +48,21 @@ def ingest_stf_data(**kwargs: Any) -> None:
                     "INSERT INTO ingestion_log (source, records_count, status) VALUES (%s, %s, 'completed')",
                     parameters=(f"stf_{source}", count),
                 )
+                if isinstance(data, list):
+                    for item in data[:200]:
+                        title = item.get("titulo") or item.get("nome") or f"STF {source}"
+                        insert_content_update(
+                            hook,
+                            source="stf",
+                            category="jurisprudencia",
+                            subcategory=source,
+                            title=str(title)[:500],
+                            summary=(item.get("ementa") or item.get("resumo") or "")[:2000],
+                            court_or_organ="STF",
+                            territory="federal",
+                            publication_date=(item.get("data") or item.get("dataPublicacao") or "")[:10] or None,
+                            source_url=item.get("link") or item.get("url"),
+                        )
             except Exception as e:
                 hook = PostgresHook(postgres_conn_id="jurisai_db")
                 hook.run(

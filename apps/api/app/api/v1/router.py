@@ -12,6 +12,7 @@ from app.api.v1 import (
     memory,
     petitions,
     search,
+    updates,
 )
 
 api_router = APIRouter()
@@ -27,3 +28,4 @@ api_router.include_router(admin.router)
 api_router.include_router(feedback.router)
 api_router.include_router(alerts.router)
 api_router.include_router(compliance.router)
+api_router.include_router(updates.router)

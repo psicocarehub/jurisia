@@ -1,20 +1,49 @@
+import logging
+import os
+from pathlib import Path
 from typing import Optional
 
+import litellm
 from litellm import acompletion
 
 from app.config import settings
 
+logger = logging.getLogger(__name__)
+
+if settings.LANGFUSE_PUBLIC_KEY and settings.LANGFUSE_SECRET_KEY:
+    os.environ["LANGFUSE_PUBLIC_KEY"] = settings.LANGFUSE_PUBLIC_KEY
+    os.environ["LANGFUSE_SECRET_KEY"] = settings.LANGFUSE_SECRET_KEY
+    os.environ["LANGFUSE_HOST"] = settings.LANGFUSE_HOST
+    litellm.success_callback = ["langfuse"]
+    litellm.failure_callback = ["langfuse"]
+    logger.info("Langfuse observability enabled")
+
+_INTENT_DIR = Path(__file__).resolve().parents[5] / "training" / "models" / "intent"
+_complexity_model = None
+_complexity_loaded = False
+
+
+def _load_complexity_model():
+    global _complexity_model, _complexity_loaded
+    if _complexity_loaded:
+        return _complexity_model
+    _complexity_loaded = True
+    path = _INTENT_DIR / "complexity_classifier.joblib"
+    if path.exists():
+        try:
+            import joblib
+            _complexity_model = joblib.load(path)
+            logger.info("Loaded trained complexity classifier")
+        except Exception as e:
+            logger.warning("Failed to load complexity classifier: %s", e)
+    return _complexity_model
+
 
 class LLMRouter:
     """
-    Multi-tier LLM router with intelligent complexity-based selection.
+    Multi-tier LLM router with ML-based complexity selection.
 
-    Tier hierarchy (atualizado Fev/2026):
-      Tier 0 — Cache/RAG (custo zero)
-      Tier 1 — GAIA 4B fine-tuned (self-hosted Modal, 70-80% das queries)
-      Tier 2 — DeepSeek V3.2 ($0.28/$1.10/M) ou Qwen 3.5 ($0.50/$2.00/M)
-      Tier 3 — Gemini 3 Pro ($1.25/$5.00/M) ou Claude Opus 4.6 ($$)
-      Fallback — GPT-5.2 Pro, Claude, Kimi K2.5, MiniMax M2.5
+    Uses trained classifier when available, falls back to keyword heuristic.
     """
 
     @property
@@ -95,6 +124,21 @@ class LLMRouter:
     def _select_tier(self, query: str, requested_tier: Optional[str] = None) -> str:
         if requested_tier:
             return requested_tier
+
+        model = _load_complexity_model()
+        if model is not None:
+            try:
+                pred = model.predict([query])[0]
+                config_path = _INTENT_DIR / "complexity_classifier_config.json"
+                if config_path.exists():
+                    import json
+                    labels = json.loads(config_path.read_text())["labels"]
+                    tier = labels[pred]
+                else:
+                    tier = ["high", "low", "medium"][pred]
+                return tier
+            except Exception as e:
+                logger.debug("ML complexity classification failed: %s", e)
 
         query_lower = query.lower()
         complexity_score = sum(

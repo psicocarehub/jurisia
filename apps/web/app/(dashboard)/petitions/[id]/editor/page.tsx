@@ -114,6 +114,26 @@ export default function PetitionEditorPage() {
     scheduleAutoSave();
   }, [scheduleAutoSave]);
 
+  const handleFormatABNT = useCallback(async () => {
+    try {
+      const resp = await apiFetch('/api/v1/petitions/format-abnt', {
+        method: 'POST',
+        body: JSON.stringify({
+          content: contentRef.current,
+          ai_generated: isAIGenerated,
+        }),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data.content) {
+          setContent(data.content);
+        }
+      }
+    } catch (err) {
+      console.error('ABNT formatting failed:', err);
+    }
+  }, [isAIGenerated]);
+
   const handleVerifyCitations = useCallback(async () => {
     if (!savedId) return;
     setIsVerifying(true);
@@ -318,7 +338,7 @@ export default function PetitionEditorPage() {
               ]);
             }}
             onVerifyCitations={handleVerifyCitations}
-            onFormatABNT={() => {}}
+            onFormatABNT={handleFormatABNT}
             onAddArticle={() => {
               setCitations((prev) => [
                 ...prev,

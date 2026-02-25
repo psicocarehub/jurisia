@@ -1,0 +1,22 @@
+{
+  "type": "ner",
+  "base": "neuralmind/bert-base-portuguese-cased",
+  "labels": [
+    "O",
+    "B-PESSOA",
+    "I-PESSOA",
+    "B-ORGANIZACAO",
+    "I-ORGANIZACAO",
+    "B-LOCAL",
+    "I-LOCAL",
+    "B-LEGISLACAO",
+    "I-LEGISLACAO",
+    "B-JURISPRUDENCIA",
+    "I-JURISPRUDENCIA",
+    "B-DATA",
+    "I-DATA",
+    "B-VALOR",
+    "I-VALOR"
+  ],
+  "n_train": 210
+}

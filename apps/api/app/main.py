@@ -1,13 +1,19 @@
 from contextlib import asynccontextmanager
 
 import sentry_sdk
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
 from app.api.v1.router import api_router
 from app.config import settings
 from app.core.middleware import AuditMiddleware, TenantMiddleware
 from app.db.session import engine
+
+limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
 
 if settings.SENTRY_DSN:
     sentry_sdk.init(
@@ -36,6 +42,9 @@ app = FastAPI(
     description="Copiloto de IA para advogados brasileiros",
     lifespan=lifespan,
 )
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(
     CORSMiddleware,

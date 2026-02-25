@@ -208,7 +208,8 @@ class STFClient:
                     parsed = parser(row)
                     if parsed:
                         results.append(parsed)
-                except Exception:
+                except Exception as e:
+                    logger.warning("STF CSV row parse error (skipping): %s", e)
                     continue
 
             logger.info("Corte Aberta CSV %s: %d registros", url.split("/")[-1], len(results))

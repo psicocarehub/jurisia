@@ -108,8 +108,8 @@ async def predict_outcome(
             )
             if profile and profile.favorability.get("geral"):
                 case_data["judge_favorability"] = profile.favorability["geral"].get("autor", 50.0)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Failed to enrich with judge favorability for %s: %s", request.judge_name, e)
 
     result = predictor.predict(case_data, area=request.area)
     return result.model_dump()

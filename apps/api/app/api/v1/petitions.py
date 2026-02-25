@@ -268,6 +268,32 @@ async def delete_petition(
     raise HTTPException(status_code=404, detail="Petition not found")
 
 
+class FormatABNTRequest(BaseModel):
+    content: str
+    include_oab: bool = False
+    ai_generated: bool = False
+
+
+@router.post("/format-abnt")
+async def format_abnt(
+    request: FormatABNTRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Apply ABNT formatting to petition content."""
+    from app.services.petition.formatter import PetitionFormatter
+
+    formatter = PetitionFormatter()
+    if request.include_oab:
+        formatted = formatter.format_oab(request.content)
+    else:
+        formatted = formatter.format_abnt(request.content)
+
+    if request.ai_generated:
+        formatted = formatter.add_ai_label(formatted)
+
+    return {"content": formatted}
+
+
 @router.post("/{petition_id}/verify-citations")
 async def verify_citations(
     petition_id: str,

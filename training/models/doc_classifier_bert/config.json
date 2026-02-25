@@ -1,0 +1,21 @@
+{
+  "type": "bert",
+  "base": "neuralmind/bert-base-portuguese-cased",
+  "labels": [
+    "peticao_inicial",
+    "contestacao",
+    "sentenca",
+    "acordao",
+    "decisao_monocratica",
+    "recurso_apelacao",
+    "recurso_agravo",
+    "certidao",
+    "procuracao",
+    "laudo_parecer",
+    "despacho",
+    "outros"
+  ],
+  "accuracy": 0.9352580927384077,
+  "n_train": 6477,
+  "n_test": 1143
+}

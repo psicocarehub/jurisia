@@ -15,6 +15,9 @@ from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.models import Variable
 from airflow.operators.python import PythonOperator
+from airflow.providers.postgres.hooks.postgres import PostgresHook
+
+from _content_updates_helper import insert_content_update
 
 logger = logging.getLogger("jurisai.dag.tribunais")
 
@@ -76,6 +79,25 @@ def _scrape_tribunal(tribunal: str, **context):
             indexed += 1
         except Exception as e:
             logger.warning("[%s] Erro indexando %s: %s", tribunal, dec.processo, e)
+
+    hook = PostgresHook(postgres_conn_id="jurisai_db")
+    uf_map = {"TJSP": "SP", "TJRJ": "RJ", "TJMG": "MG", "TJRS": "RS", "TJPR": "PR"}
+    for dec in decisions:
+        text = dec.ementa or dec.decisao
+        if not text or len(text.strip()) < 50:
+            continue
+        insert_content_update(
+            hook,
+            source=f"tribunal_{tribunal.lower()}",
+            category="jurisprudencia",
+            subcategory=dec.classe or "decisao",
+            title=f"{tribunal} - {dec.processo} - {dec.classe}"[:500],
+            summary=(dec.ementa or "")[:2000],
+            court_or_organ=tribunal,
+            territory=uf_map.get(tribunal, tribunal),
+            publication_date=dec.data_julgamento.isoformat()[:10] if dec.data_julgamento else None,
+            areas=[dec.assunto[:100]] if dec.assunto else [],
+        )
 
     Variable.set(last_sync_key, datetime.utcnow().strftime("%d/%m/%Y"))
     logger.info("[%s] %d/%d decisoes indexadas", tribunal, indexed, len(decisions))

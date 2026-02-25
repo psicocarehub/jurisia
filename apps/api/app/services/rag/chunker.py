@@ -1,10 +1,20 @@
 """
 Hierarchical chunking for Brazilian legal documents.
+Uses ML section classifier when available, regex patterns as fallback.
 """
 
+from __future__ import annotations
+
+import logging
 import re
 from dataclasses import dataclass
+from pathlib import Path
 from typing import List, Tuple
+
+logger = logging.getLogger(__name__)
+
+SECTION_MODEL_PATH = Path(__file__).resolve().parents[5] / "training" / "models" / "section_classifier" / "section_classifier.joblib"
+SECTION_CONFIG_PATH = SECTION_MODEL_PATH.parent / "config.json"
 
 
 @dataclass
@@ -12,7 +22,7 @@ class Chunk:
     """A single chunk of text."""
 
     content: str
-    content_type: str  # ementa, relatorio, fundamentacao, dispositivo, artigo, paragrafo, generic
+    content_type: str  # ementa, relatorio, fundamentacao, dispositivo, artigo, paragrafo, cabecalho, generic
     metadata: dict
     token_count: int
 
@@ -26,6 +36,39 @@ class LegalChunker:
         "fundamentacao": r"(?i)(FUNDAMENTAÇÃO|VOTO|DO MÉRITO|FUNDAMENTAÇÃO JURÍDICA)",
         "dispositivo": r"(?i)(DISPOSITIVO|DECISÃO|CONCLUSÃO|ISTO POSTO|ANTE O EXPOSTO)",
     }
+
+    _section_clf = None
+    _section_loaded = False
+
+    @classmethod
+    def _load_section_classifier(cls):
+        if cls._section_loaded:
+            return cls._section_clf is not None
+        cls._section_loaded = True
+        if SECTION_MODEL_PATH.exists():
+            try:
+                import joblib
+                cls._section_clf = joblib.load(SECTION_MODEL_PATH)
+                logger.info("Section classifier loaded")
+                return True
+            except Exception as e:
+                logger.warning("Failed to load section classifier: %s", e)
+        return False
+
+    def _classify_section(self, text: str) -> str:
+        """Classify text section using ML model."""
+        if self._load_section_classifier():
+            try:
+                import json
+                labels = ["ementa", "relatorio", "fundamentacao", "dispositivo", "cabecalho", "generic"]
+                if SECTION_CONFIG_PATH.exists():
+                    with open(SECTION_CONFIG_PATH) as f:
+                        labels = json.load(f).get("labels", labels)
+                pred = self._section_clf.predict([text[:500]])[0]
+                return labels[pred] if isinstance(pred, int) else str(pred)
+            except Exception as e:
+                logger.warning("Section classifier prediction failed: %s", e)
+        return "generic"
 
     def __init__(
         self,
@@ -45,13 +88,16 @@ class LegalChunker:
             return self._chunk_generic(text)
 
     def _chunk_judicial_decision(self, text: str) -> List[Chunk]:
-        """Split judicial decisions by sections (ementa, relatório, fundamentação, dispositivo)."""
+        """Split judicial decisions by sections using regex, enhanced by ML classifier."""
         chunks: List[Chunk] = []
         sections = self._split_sections(text)
 
         for section_type, section_text in sections:
             if not section_text.strip():
                 continue
+
+            if section_type == "generic" and self._load_section_classifier():
+                section_type = self._classify_section(section_text)
 
             if section_type == "ementa":
                 chunks.append(

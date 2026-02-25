@@ -204,16 +204,16 @@ class MemoryManager:
                 mem0_results = await self.mem0.search(
                     query=query, user_id=scope, top_k=10
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("Mem0 search_facts failed: %s", e)
 
         if self.graphiti:
             try:
                 kg_results = await self.graphiti.search(
                     query=query, namespace=tenant_id, top_k=10
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("Graphiti search_facts failed: %s", e)
 
         return {
             "facts": [

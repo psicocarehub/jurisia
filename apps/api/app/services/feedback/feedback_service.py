@@ -144,7 +144,8 @@ class FeedbackService:
             )
             if not isinstance(results, list):
                 results = [results] if results else []
-        except Exception:
+        except Exception as e:
+            logger.warning("Failed to fetch training candidates: %s", e)
             return []
 
         candidates = []
@@ -180,7 +181,8 @@ class FeedbackService:
                     {"processed": True},
                     filters={"id": fid},
                 )
-            except Exception:
+            except Exception as e:
+                logger.warning("Failed to mark feedback %s as processed: %s", fid, e)
                 continue
 
     async def get_source_quality_score(self, source_id: str) -> float:
@@ -193,8 +195,8 @@ class FeedbackService:
             )
             if result and isinstance(result, dict):
                 return result.get("quality_score", 0.5)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Failed to get source quality score for %s: %s", source_id, e)
         return 0.5
 
     async def get_source_adjustments(

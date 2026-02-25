@@ -71,6 +71,96 @@
   @apply border-l-4 border-gray-300 pl-4 italic text-gray-600;
 }
 
+/* Juris.AI chat markdown prose styles */
+.prose-juris {
+  @apply text-sm leading-relaxed text-gray-900;
+}
+
+.prose-juris h1 {
+  @apply mt-4 mb-3 text-lg font-bold text-gray-900 first:mt-0;
+}
+
+.prose-juris h2 {
+  @apply mt-4 mb-2 text-base font-semibold text-gray-900 first:mt-0;
+}
+
+.prose-juris h3 {
+  @apply mt-3 mb-2 text-sm font-semibold text-legal-blue-800 first:mt-0;
+}
+
+.prose-juris p {
+  @apply mb-2 last:mb-0;
+}
+
+.prose-juris ul {
+  @apply mb-3 ml-4 list-disc space-y-1;
+}
+
+.prose-juris ol {
+  @apply mb-3 ml-4 list-decimal space-y-1;
+}
+
+.prose-juris li {
+  @apply text-sm leading-relaxed;
+}
+
+.prose-juris li > p {
+  @apply mb-0;
+}
+
+.prose-juris strong {
+  @apply font-semibold text-gray-900;
+}
+
+.prose-juris em {
+  @apply italic text-gray-700;
+}
+
+.prose-juris blockquote {
+  @apply my-3 border-l-4 border-legal-blue-400 bg-legal-blue-50 py-2 pl-4 pr-3 text-sm italic text-gray-700 rounded-r-lg;
+}
+
+.prose-juris code {
+  @apply rounded bg-gray-100 px-1.5 py-0.5 text-xs font-mono text-gray-800;
+}
+
+.prose-juris pre {
+  @apply my-3 overflow-x-auto rounded-lg bg-gray-900 p-4;
+}
+
+.prose-juris pre code {
+  @apply bg-transparent p-0 text-gray-100;
+}
+
+.prose-juris hr {
+  @apply my-4 border-gray-200;
+}
+
+.prose-juris a {
+  @apply text-legal-blue-600 underline decoration-legal-blue-300 underline-offset-2 hover:text-legal-blue-700;
+}
+
+.prose-juris table {
+  @apply my-3 w-full border-collapse text-sm;
+}
+
+.prose-juris th {
+  @apply border-b-2 border-gray-200 bg-gray-50 px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider text-gray-600;
+}
+
+.prose-juris td {
+  @apply border-b border-gray-100 px-3 py-2;
+}
+
+.prose-juris tr:hover td {
+  @apply bg-gray-50;
+}
+
+/* Warning/info box inside chat */
+.prose-juris p:has(> strong:first-child) {
+  @apply rounded-lg;
+}
+
 @layer components {
   .btn-primary {
     @apply inline-flex items-center justify-center rounded-lg bg-legal-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-legal-blue-700 focus:outline-none focus:ring-2 focus:ring-legal-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none;

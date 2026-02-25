@@ -1,0 +1,25 @@
+{
+  "labels": [
+    "analysis",
+    "chat",
+    "drafting",
+    "memory",
+    "research"
+  ],
+  "label2id": {
+    "analysis": 0,
+    "chat": 1,
+    "drafting": 2,
+    "memory": 3,
+    "research": 4
+  },
+  "cv_accuracy": 0.9528571428571428,
+  "best_params": {
+    "clf__estimator__C": "1.0",
+    "clf__estimator__max_iter": "5000",
+    "tfidf__max_features": "10000",
+    "tfidf__ngram_range": "(1, 3)",
+    "tfidf__sublinear_tf": "True"
+  },
+  "num_samples": 700
+}

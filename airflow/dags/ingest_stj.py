@@ -13,6 +13,8 @@ from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.providers.postgres.hooks.postgres import PostgresHook
 
+from _content_updates_helper import insert_content_update
+
 DEFAULT_ARGS = {
     "owner": "jurisai",
     "depends_on_past": False,
@@ -51,6 +53,21 @@ def ingest_stj_decisions(**kwargs: Any) -> None:
                     "INSERT INTO ingestion_log (source, records_count, status) VALUES (%s, %s, 'completed')",
                     parameters=(f"stj_{dataset}", count),
                 )
+                if dl.status_code == 200 and count > 0:
+                    for line in lines[1:201]:
+                        cols = line.split(",")
+                        if len(cols) < 2:
+                            continue
+                        insert_content_update(
+                            hook,
+                            source="stj",
+                            category="jurisprudencia",
+                            subcategory=dataset,
+                            title=f"STJ - {cols[0].strip()}"[:500],
+                            summary=cols[1].strip()[:2000] if len(cols) > 1 else None,
+                            court_or_organ="STJ",
+                            territory="federal",
+                        )
             except Exception as e:
                 hook = PostgresHook(postgres_conn_id="jurisai_db")
                 hook.run(

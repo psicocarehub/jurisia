@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { apiFetch } from '@/lib/api';
+import { useToast } from '@/components/toast';
 import {
   FileText,
   Upload,
@@ -49,6 +50,7 @@ export default function DocumentsPage() {
   const [dragOver, setDragOver] = useState(false);
   const [selectedDoc, setSelectedDoc] = useState<Doc | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const { error: showError, success: showSuccess } = useToast();
 
   const fetchDocs = useCallback(async () => {
     setLoading(true);
@@ -59,7 +61,7 @@ export default function DocumentsPage() {
         setDocs(data.documents || []);
       }
     } catch {
-      // silently fail
+      showError('Erro ao carregar documentos');
     } finally {
       setLoading(false);
     }
@@ -88,7 +90,7 @@ export default function DocumentsPage() {
         }
       }
     } catch {
-      alert('Erro ao fazer upload');
+      showError('Erro ao fazer upload');
     } finally {
       setUploading(false);
     }
@@ -100,8 +102,9 @@ export default function DocumentsPage() {
       await apiFetch(`/api/v1/documents/${id}`, { method: 'DELETE' });
       setDocs((prev) => prev.filter((d) => d.id !== id));
       if (selectedDoc?.id === id) setSelectedDoc(null);
+      showSuccess('Documento excluído');
     } catch {
-      // silently fail
+      showError('Erro ao excluir documento');
     }
   };
 
@@ -118,7 +121,7 @@ export default function DocumentsPage() {
         URL.revokeObjectURL(url);
       }
     } catch {
-      // silently fail
+      showError('Erro ao baixar documento');
     }
   };
 

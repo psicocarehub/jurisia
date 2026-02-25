@@ -1,0 +1,6 @@
+{
+  "type": "sentence_transformer",
+  "base": "intfloat/multilingual-e5-base",
+  "pairs": 590,
+  "epochs": 3
+}

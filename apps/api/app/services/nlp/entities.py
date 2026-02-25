@@ -9,12 +9,15 @@ Combina NER (transformers) e RegEx para extrair:
 - Referências legislativas
 """
 
+import logging
 from datetime import datetime
 from decimal import Decimal
 from typing import Optional
 
 from app.services.nlp.ner import LegalNERService
 from app.services.ocr.postprocess import LegalPostProcessor, LegalEntity
+
+logger = logging.getLogger(__name__)
 
 
 class EntityExtractor:
@@ -110,7 +113,8 @@ class EntityExtractor:
                     value = Decimal(num_str)
 
                 result.append({"value": value, "raw_text": raw})
-            except Exception:
+            except Exception as e:
+                logger.warning("Failed to parse monetary value %r: %s", raw, e)
                 result.append({"value": None, "raw_text": raw})
 
         return result

@@ -32,11 +32,13 @@ async def process_document(
     """
     from app.services.storage.service import StorageService
     from app.services.nlp.classifier import DocumentClassifier
+    from app.services.nlp.ner import LegalNERService
     from app.services.rag.chunker import LegalChunker
     from app.services.rag.indexer import IncrementalIndexer
 
     storage = StorageService()
     classifier = DocumentClassifier()
+    ner_service = LegalNERService()
 
     try:
         await _update_doc_status(document_id, "processing")
@@ -55,7 +57,8 @@ async def process_document(
         else:
             try:
                 text = file_data.decode("utf-8", errors="replace")
-            except Exception:
+            except Exception as e:
+                logger.debug("UTF-8 decode failed, falling back to latin-1: %s", e)
                 text = file_data.decode("latin-1", errors="replace")
 
         if not text.strip():
@@ -65,8 +68,25 @@ async def process_document(
         label, confidence = classifier.classify(text)
         logger.info("Document %s classified as %s (%.2f)", document_id, label, confidence)
 
+        entities = []
+        try:
+            entities = ner_service.extract_entities(text[:5000])
+        except Exception as e:
+            logger.warning("NER extraction failed: %s", e)
+
+        entity_metadata = {}
+        for ent in entities:
+            key = f"ner_{ent.label.lower()}"
+            if key not in entity_metadata:
+                entity_metadata[key] = []
+            if ent.text not in entity_metadata[key]:
+                entity_metadata[key].append(ent.text)
+
         chunker = LegalChunker()
-        chunks = chunker.chunk(text)
+        doc_type_map = {"acordao": "acordao", "sentenca": "sentenca", "decisao_monocratica": "decisao"}
+        chunk_doc_type = doc_type_map.get(label, "generic")
+        chunk_objs = chunker.chunk_document(text, doc_type=chunk_doc_type)
+        chunks = [c.content for c in chunk_objs]
 
         indexer = IncrementalIndexer()
         indexed = 0
@@ -83,6 +103,7 @@ async def process_document(
                     "chunk_index": i,
                     "source": "upload",
                     "storage_key": storage_key,
+                    **entity_metadata,
                 },
             }
             try:
@@ -141,8 +162,8 @@ async def _run_ocr(file_data: bytes, filename: str, mime_type: str) -> str:
                 with pdf_open(io.BytesIO(file_data)) as pdf:
                     pages = [p.extract_text() or "" for p in pdf.pages]
                     return "\n\n".join(pages)
-            except ImportError:
-                pass
+            except ImportError as e:
+                logger.debug("pdfplumber not available, using PyPDF2: %s", e)
 
             from PyPDF2 import PdfReader
 

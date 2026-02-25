@@ -9,13 +9,17 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query
+import logging
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
+from app.dependencies import get_current_user
 from app.services.ingestion.cnpj import CNPJClient
 from app.services.ingestion.transparencia import TransparenciaClient
 
 router = APIRouter(prefix="/compliance", tags=["compliance"])
+logger = logging.getLogger("jurisai.compliance")
 
 
 class SancaoResponse(BaseModel):
@@ -47,7 +51,7 @@ class CNPJSearchResult(BaseModel):
 
 
 @router.get("/check/{identifier}", response_model=ComplianceCheckResult)
-async def check_sanctions(identifier: str):
+async def check_sanctions(identifier: str, user: dict = Depends(get_current_user)):
     """
     Verifica sancoes de uma empresa (CNPJ) ou servidor (CPF).
 
@@ -98,7 +102,7 @@ async def check_sanctions(identifier: str):
 
 
 @router.get("/cnpj/{cnpj}", response_model=Optional[CNPJSearchResult])
-async def search_cnpj(cnpj: str):
+async def search_cnpj(cnpj: str, user: dict = Depends(get_current_user)):
     """Busca dados de uma empresa pelo CNPJ na base da Receita Federal."""
     clean = cnpj.replace(".", "").replace("/", "").replace("-", "")
     if len(clean) != 14:
@@ -123,6 +127,7 @@ async def search_cnpj(cnpj: str):
 async def search_cnpj_by_name(
     q: str = Query(..., min_length=3, description="Razao social ou nome fantasia"),
     limit: int = Query(10, ge=1, le=50),
+    user: dict = Depends(get_current_user),
 ):
     """Busca empresas por razao social na base CNPJ."""
     client = CNPJClient()

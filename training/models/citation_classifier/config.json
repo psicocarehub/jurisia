@@ -1,0 +1,11 @@
+{
+  "labels": [
+    "legislacao",
+    "jurisprudencia",
+    "sumula",
+    "doutrina",
+    "nao_citacao"
+  ],
+  "cv_accuracy": 0.9787234042553191,
+  "n_samples": 940
+}

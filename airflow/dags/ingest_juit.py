@@ -12,6 +12,9 @@ from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.models import Variable
 from airflow.operators.python import PythonOperator
+from airflow.providers.postgres.hooks.postgres import PostgresHook
+
+from _content_updates_helper import insert_content_update
 
 logger = logging.getLogger("jurisai.dag.juit")
 
@@ -68,6 +71,23 @@ def _fetch_and_index(tribunal: str, **context):
             indexed += 1
         except Exception as e:
             logger.warning("Erro indexando %s: %s", dec.id, e)
+
+    hook = PostgresHook(postgres_conn_id="jurisai_db")
+    for dec in decisions:
+        if not dec.inteiro_teor and not dec.ementa:
+            continue
+        insert_content_update(
+            hook,
+            source="juit",
+            category="jurisprudencia",
+            subcategory=dec.classe or "decisao",
+            title=f"{dec.tribunal} - {dec.processo} - {dec.classe}"[:500],
+            summary=(dec.ementa or "")[:2000],
+            court_or_organ=dec.tribunal,
+            territory="federal",
+            publication_date=dec.data_julgamento.isoformat()[:10] if dec.data_julgamento else None,
+            areas=[dec.area] if dec.area else [],
+        )
 
     Variable.set(last_sync_key, datetime.utcnow().strftime("%Y-%m-%d"))
     logger.info("[%s] %d/%d decisoes indexadas", tribunal, indexed, len(decisions))

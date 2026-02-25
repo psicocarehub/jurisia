@@ -6,11 +6,14 @@ endpoint vLLM ou Modal, formato compatível com OpenAI.
 """
 
 import json
+import logging
 from typing import Any, AsyncIterator, Optional
 
 import httpx
 
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class GAIAClient:
@@ -122,5 +125,5 @@ class GAIAClient:
                             )
                             if delta:
                                 yield delta
-                        except json.JSONDecodeError:
-                            pass
+                        except json.JSONDecodeError as e:
+                            logger.debug("Invalid SSE chunk (skipped): %s", e)

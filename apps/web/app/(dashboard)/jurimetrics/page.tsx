@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { apiFetch, apiPost } from '@/lib/api';
+import { useToast } from '@/components/toast';
 import {
   BarChart3,
   Search,
@@ -92,6 +93,7 @@ function JudgeProfileTab() {
   const [court, setCourt] = useState('');
   const [profile, setProfile] = useState<JudgeProfile | null>(null);
   const [loading, setLoading] = useState(false);
+  const { error: showError } = useToast();
 
   const handleSearch = async () => {
     if (!judgeName.trim()) return;
@@ -103,7 +105,7 @@ function JudgeProfileTab() {
         setProfile(await res.json());
       }
     } catch {
-      // silently fail
+      showError('Erro ao buscar perfil do juiz');
     } finally {
       setLoading(false);
     }
@@ -248,8 +250,17 @@ function PredictTab() {
   });
   const [result, setResult] = useState<PredictionResult | null>(null);
   const [loading, setLoading] = useState(false);
+  const { error: showError } = useToast();
 
   const handlePredict = async () => {
+    if (!form.area) {
+      showError('Selecione a área do direito');
+      return;
+    }
+    if (!form.tribunal) {
+      showError('Selecione o tribunal');
+      return;
+    }
     setLoading(true);
     try {
       const body = {
@@ -261,7 +272,7 @@ function PredictTab() {
       const data = await apiPost<PredictionResult>('/api/v1/jurimetrics/predict', body);
       setResult(data);
     } catch (e: any) {
-      alert(e.message || 'Erro na predição');
+      showError(e.message || 'Erro na predição');
     } finally {
       setLoading(false);
     }

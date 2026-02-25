@@ -1,0 +1,20 @@
+{
+  "type": "tfidf_logreg",
+  "labels": [
+    "peticao_inicial",
+    "contestacao",
+    "sentenca",
+    "acordao",
+    "decisao_monocratica",
+    "recurso_apelacao",
+    "recurso_agravo",
+    "certidao",
+    "procuracao",
+    "laudo_parecer",
+    "despacho",
+    "outros"
+  ],
+  "accuracy": 0.8452860596293312,
+  "n_train": 4964,
+  "n_test": 1241
+}

@@ -1,4 +1,31 @@
-const getAuthHeaders = (): HeadersInit => {
+let _tokenPromise: Promise<void> | null = null;
+
+async function ensureToken(): Promise<void> {
+  if (typeof window === 'undefined') return;
+  if (localStorage.getItem('token')) return;
+
+  if (_tokenPromise) return _tokenPromise;
+
+  _tokenPromise = (async () => {
+    try {
+      const res = await fetch('/api/v1/chat/demo-token', { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.token) {
+          localStorage.setItem('token', data.token);
+        }
+      }
+    } catch {
+      // silently fail — pages will show empty state
+    } finally {
+      _tokenPromise = null;
+    }
+  })();
+
+  return _tokenPromise;
+}
+
+function getAuthHeaders(): HeadersInit {
   if (typeof window === 'undefined') return {};
   const token = localStorage.getItem('token');
   const headers: HeadersInit = { 'Content-Type': 'application/json' };
@@ -6,12 +33,13 @@ const getAuthHeaders = (): HeadersInit => {
     headers['Authorization'] = `Bearer ${token}`;
   }
   return headers;
-};
+}
 
 export async function apiFetch(
   path: string,
   options: RequestInit = {}
 ): Promise<Response> {
+  await ensureToken();
   const headers = { ...getAuthHeaders(), ...options.headers };
   const baseUrl =
     typeof window !== 'undefined'

@@ -1,9 +1,12 @@
+import logging
 import ssl
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy import make_url
 
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 _connect_args: dict = {}
 _db_url = settings.DATABASE_URL
@@ -51,7 +54,8 @@ async def get_db() -> AsyncSession:
         try:
             yield session
             await session.commit()
-        except Exception:
+        except Exception as e:
+            logger.warning("Database session error, rolling back: %s", e)
             await session.rollback()
             raise
         finally:

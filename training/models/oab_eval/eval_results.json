@@ -1,0 +1,122 @@
+{
+  "accuracy": 0.0,
+  "correct": 0,
+  "total": 12,
+  "area_stats": {
+    "consumidor": {
+      "correct": 0,
+      "total": 1
+    },
+    "civil": {
+      "correct": 0,
+      "total": 4
+    },
+    "processual": {
+      "correct": 0,
+      "total": 2
+    },
+    "trabalhista": {
+      "correct": 0,
+      "total": 2
+    },
+    "família": {
+      "correct": 0,
+      "total": 1
+    },
+    "penal": {
+      "correct": 0,
+      "total": 1
+    },
+    "tributário": {
+      "correct": 0,
+      "total": 1
+    }
+  },
+  "model": "/output/gaia_sft_model",
+  "results": [
+    {
+      "q": 0,
+      "pred": "?",
+      "gold": "A",
+      "ok": false,
+      "area": "consumidor"
+    },
+    {
+      "q": 1,
+      "pred": "?",
+      "gold": "C",
+      "ok": false,
+      "area": "civil"
+    },
+    {
+      "q": 2,
+      "pred": "?",
+      "gold": "B",
+      "ok": false,
+      "area": "processual"
+    },
+    {
+      "q": 3,
+      "pred": "?",
+      "gold": "C",
+      "ok": false,
+      "area": "trabalhista"
+    },
+    {
+      "q": 4,
+      "pred": "?",
+      "gold": "D",
+      "ok": false,
+      "area": "processual"
+    },
+    {
+      "q": 5,
+      "pred": "?",
+      "gold": "B",
+      "ok": false,
+      "area": "civil"
+    },
+    {
+      "q": 6,
+      "pred": "?",
+      "gold": "C",
+      "ok": false,
+      "area": "trabalhista"
+    },
+    {
+      "q": 7,
+      "pred": "?",
+      "gold": "B",
+      "ok": false,
+      "area": "civil"
+    },
+    {
+      "q": 8,
+      "pred": "?",
+      "gold": "C",
+      "ok": false,
+      "area": "civil"
+    },
+    {
+      "q": 9,
+      "pred": "?",
+      "gold": "B",
+      "ok": false,
+      "area": "família"
+    },
+    {
+      "q": 10,
+      "pred": "?",
+      "gold": "B",
+      "ok": false,
+      "area": "penal"
+    },
+    {
+      "q": 11,
+      "pred": "?",
+      "gold": "B",
+      "ok": false,
+      "area": "tributário"
+    }
+  ]
+}

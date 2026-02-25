@@ -293,7 +293,8 @@ class ESAJClient:
                     comarca=(comarca or "").strip(),
                     metadata={"grau": "2", "source": "CJSG"},
                 ))
-            except Exception:
+            except Exception as e:
+                logger.warning("CJSG block parse error (skipping): %s", e)
                 continue
 
         return decisions
@@ -333,7 +334,8 @@ class ESAJClient:
                     comarca=comarca.strip(),
                     metadata={"grau": "1", "source": "CJPG"},
                 ))
-            except Exception:
+            except Exception as e:
+                logger.warning("CJPG block parse error (skipping): %s", e)
                 continue
 
         return decisions

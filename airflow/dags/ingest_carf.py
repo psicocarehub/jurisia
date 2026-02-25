@@ -12,6 +12,9 @@ from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.models import Variable
 from airflow.operators.python import PythonOperator
+from airflow.providers.postgres.hooks.postgres import PostgresHook
+
+from _content_updates_helper import insert_content_update
 
 logger = logging.getLogger("jurisai.dag.carf")
 
@@ -75,6 +78,26 @@ def _index_carf(**context):
             indexed += 1
         except Exception as e:
             logger.warning("Erro indexando CARF %s: %s", dec_data.get("id"), e)
+
+    hook = PostgresHook(postgres_conn_id="jurisai_db")
+    for dec_data in decisions_data:
+        insert_content_update(
+            hook,
+            source="carf",
+            category="jurisprudencia",
+            subcategory="acordao_tributario",
+            title=f"CARF - Acordao {dec_data.get('numero_acordao', '')} - {dec_data.get('materia', '')}"[:500],
+            summary=(dec_data.get("ementa") or "")[:2000],
+            court_or_organ="CARF",
+            territory="federal",
+            publication_date=dec_data.get("data_sessao"),
+            areas=["tributario"],
+            metadata={
+                "turma": dec_data.get("turma"),
+                "relator": dec_data.get("relator"),
+                "resultado": dec_data.get("resultado"),
+            },
+        )
 
     Variable.set("carf_last_sync", datetime.utcnow().strftime("%Y-%m-%d"))
     logger.info("CARF: %d/%d decisoes indexadas", indexed, len(decisions_data))

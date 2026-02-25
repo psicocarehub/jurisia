@@ -1,13 +1,22 @@
 """
 Citation verification for Brazilian legal text.
-Legislation, jurisprudence, súmulas. Verification stubs.
+Uses ML classifier for type detection with regex extraction + API verification.
 """
 
+from __future__ import annotations
+
+import logging
 import re
 from enum import Enum
+from pathlib import Path
 from typing import List, Optional
 
 from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
+
+CITATION_CLF_PATH = Path(__file__).resolve().parents[5] / "training" / "models" / "citation_classifier" / "citation_classifier.joblib"
+CITATION_CONFIG_PATH = CITATION_CLF_PATH.parent / "config.json"
 
 
 class CitationStatus(str, Enum):
@@ -22,7 +31,7 @@ class Citation(BaseModel):
     """Verified or unverified citation."""
 
     text: str
-    type: str  # legislacao, jurisprudencia, doutrina
+    type: str  # legislacao, jurisprudencia, doutrina, sumula
     status: CitationStatus
     verified_text: Optional[str] = None
     source_url: Optional[str] = None
@@ -31,6 +40,38 @@ class Citation(BaseModel):
 
 class CitationVerifier:
     """Extract and verify citations in legal text."""
+
+    _clf = None
+    _clf_loaded = False
+    _clf_labels = ["legislacao", "jurisprudencia", "sumula", "doutrina", "nao_citacao"]
+
+    @classmethod
+    def _load_clf(cls) -> bool:
+        if cls._clf_loaded:
+            return cls._clf is not None
+        cls._clf_loaded = True
+        if CITATION_CLF_PATH.exists():
+            try:
+                import joblib, json
+                cls._clf = joblib.load(CITATION_CLF_PATH)
+                if CITATION_CONFIG_PATH.exists():
+                    with open(CITATION_CONFIG_PATH) as f:
+                        cls._clf_labels = json.load(f).get("labels", cls._clf_labels)
+                logger.info("Citation classifier loaded")
+                return True
+            except Exception as e:
+                logger.warning("Failed to load citation classifier: %s", e)
+        return False
+
+    def classify_citation(self, text: str) -> str:
+        """Classify citation type using ML model."""
+        if self._load_clf():
+            try:
+                pred = self._clf.predict([text])[0]
+                return self._clf_labels[pred] if isinstance(pred, int) else str(pred)
+            except Exception as e:
+                logger.debug("Citation ML classification failed for %r: %s", text[:50], e)
+        return "legislacao"
 
     async def verify_all(self, text: str) -> List[Citation]:
         """Extract and verify all citations."""
@@ -97,8 +138,8 @@ class CitationVerifier:
                         source_url=f"https://www.lexml.gov.br/busca/SRU?query={search_term}",
                         confidence=0.85,
                     )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("LexML SRU legislation verification failed for %r: %s", ref[:50], e)
 
         # Try normas.leg.br (Planalto)
         try:
@@ -126,8 +167,8 @@ class CitationVerifier:
                             status=CitationStatus.VERIFIED,
                             source_url=url, confidence=0.9,
                         )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("normas.leg.br legislation verification failed for %r: %s", ref[:50], e)
 
         # Fallback: search in Elasticsearch
         try:
@@ -144,8 +185,8 @@ class CitationVerifier:
                         confidence=round(c.score, 2),
                         verified_text=c.content[:200],
                     )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Elasticsearch legislation verification failed for %r: %s", ref[:50], e)
 
         return Citation(
             text=ref, type="legislacao",
@@ -170,8 +211,8 @@ class CitationVerifier:
                     confidence=0.9,
                     verified_text=first.get("ementa", "")[:200],
                 )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("STJ jurisprudence verification failed for %r: %s", ref[:50], e)
 
         # Try STF API
         try:
@@ -187,8 +228,8 @@ class CitationVerifier:
                     confidence=0.9,
                     verified_text=first.get("ementa", "")[:200],
                 )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("STF jurisprudence verification failed for %r: %s", ref[:50], e)
 
         # Fallback: Elasticsearch
         try:
@@ -205,8 +246,8 @@ class CitationVerifier:
                         confidence=round(c.score, 2),
                         verified_text=c.content[:200],
                     )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Elasticsearch jurisprudence verification failed for %r: %s", ref[:50], e)
 
         return Citation(
             text=ref, type="jurisprudencia",
@@ -239,8 +280,8 @@ class CitationVerifier:
                             source_url="https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp",
                             confidence=0.9,
                         )
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("STF sumula verification failed for %r: %s", ref[:50], e)
 
         # Try STJ
         if is_stj or not is_stf:
@@ -257,8 +298,8 @@ class CitationVerifier:
                             source_url=f"https://scon.stj.jus.br/SCON/sumstj/toc.jsp?livre=@num={sumula_number}",
                             confidence=0.85,
                         )
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("STJ sumula verification failed for %r: %s", ref[:50], e)
 
         # Fallback: Elasticsearch
         try:
@@ -275,8 +316,8 @@ class CitationVerifier:
                         confidence=round(c.score, 2),
                         verified_text=c.content[:200],
                     )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Elasticsearch sumula verification failed for %r: %s", ref[:50], e)
 
         return Citation(
             text=ref, type="jurisprudencia",
