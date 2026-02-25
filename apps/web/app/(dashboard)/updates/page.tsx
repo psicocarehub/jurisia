@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { apiFetch } from '@/lib/api';
 import { useToast } from '@/components/toast';
 import {
@@ -116,11 +116,22 @@ export default function UpdatesPage() {
   const [highlights, setHighlights] = useState<ContentUpdate[]>([]);
   const [sources, setSources] = useState<SourceInfo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState<DateRange>('today');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedArea, setSelectedArea] = useState<string>('');
   const [selectedTerritory, setSelectedTerritory] = useState<string>('');
   const [searchText, setSearchText] = useState<string>('');
+  const [searchInput, setSearchInput] = useState<string>('');
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    searchTimerRef.current = setTimeout(() => {
+      setSearchText(searchInput);
+      setPage(1);
+    }, 400);
+    return () => { if (searchTimerRef.current) clearTimeout(searchTimerRef.current); };
+  }, [searchInput]);
   const [page, setPage] = useState(1);
   const [showSources, setShowSources] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ContentUpdate | null>(null);
@@ -144,6 +155,7 @@ export default function UpdatesPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
+    setError(null);
     const { from, to } = getDateRange();
 
     const params = new URLSearchParams({
@@ -170,7 +182,8 @@ export default function UpdatesPage() {
         const h = await highlightsRes.json();
         setHighlights(h.highlights || []);
       }
-    } catch {
+    } catch (e) {
+      setError('Não foi possível carregar as novidades. Verifique sua conexão.');
       showError('Erro ao carregar novidades');
     } finally {
       setLoading(false);
@@ -236,7 +249,7 @@ export default function UpdatesPage() {
       {/* Main content */}
       <div className={`flex-1 overflow-auto p-6 ${selectedItem ? 'pr-0' : ''}`}>
         {/* Header */}
-        <div className="mb-6 flex items-center justify-between">
+        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Novidades Jurídicas</h1>
             <p className="mt-1 text-sm text-gray-500">
@@ -246,6 +259,7 @@ export default function UpdatesPage() {
           <div className="flex items-center gap-2">
             <button
               onClick={() => setShowSources(!showSources)}
+              aria-label="Ver status das fontes de dados"
               className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
             >
               <Globe className="h-4 w-4" />
@@ -253,6 +267,7 @@ export default function UpdatesPage() {
             </button>
             <button
               onClick={() => { setPage(1); fetchData(); }}
+              aria-label="Atualizar feed de novidades"
               className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
             >
               <RefreshCw className="h-4 w-4" />
@@ -319,7 +334,7 @@ export default function UpdatesPage() {
                   <button
                     key={h.id}
                     onClick={() => setSelectedItem(h)}
-                    className="flex min-w-[280px] max-w-[320px] flex-col rounded-xl border border-gray-200 bg-white p-4 text-left hover:border-gray-300 hover:shadow-sm"
+                    className="flex min-w-[240px] max-w-[320px] flex-col rounded-xl border border-gray-200 bg-white p-4 text-left hover:border-gray-300 hover:shadow-sm"
                   >
                     <div className="mb-2 flex items-center gap-2">
                       <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${cfg.color}`}>
@@ -341,14 +356,15 @@ export default function UpdatesPage() {
         )}
 
         {/* Filters bar */}
-        <div className="mb-4 flex flex-wrap items-center gap-2">
+        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
             <input
               type="text"
-              value={searchText}
-              onChange={(e) => { setSearchText(e.target.value); setPage(1); }}
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
               placeholder="Buscar por título..."
+              aria-label="Buscar novidades por título"
               className="w-full rounded-lg border border-gray-200 bg-white py-2 pl-9 pr-3 text-sm focus:border-legal-blue-400 focus:outline-none focus:ring-1 focus:ring-legal-blue-400"
             />
           </div>
@@ -391,6 +407,7 @@ export default function UpdatesPage() {
           {hasFilters && (
             <button
               onClick={clearFilters}
+              aria-label="Limpar todos os filtros"
               className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-500 hover:bg-gray-50"
             >
               <X className="h-3 w-3" />
@@ -398,6 +415,18 @@ export default function UpdatesPage() {
             </button>
           )}
         </div>
+
+        {error && (
+          <div className="mb-4 flex items-center justify-between rounded-lg border border-red-200 bg-red-50 px-4 py-3">
+            <p className="text-sm text-red-700">{error}</p>
+            <button
+              onClick={() => { setError(null); fetchData(); }}
+              className="ml-4 rounded-lg bg-red-100 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-200"
+            >
+              Tentar novamente
+            </button>
+          </div>
+        )}
 
         {/* Feed list */}
         {loading ? (
@@ -476,13 +505,14 @@ export default function UpdatesPage() {
             {/* Pagination */}
             {feed.total_pages > 1 && (
               <div className="mt-4 flex items-center justify-between">
-                <span className="text-sm text-gray-500">
+                <span role="status" className="text-sm text-gray-500">
                   {feed.total} resultado{feed.total !== 1 ? 's' : ''} &middot; Página {feed.page} de {feed.total_pages}
                 </span>
                 <div className="flex gap-1">
                   <button
                     onClick={() => setPage(Math.max(1, page - 1))}
                     disabled={page <= 1}
+                    aria-label="Página anterior"
                     className="rounded-lg border border-gray-200 p-2 text-gray-600 hover:bg-gray-50 disabled:opacity-40"
                   >
                     <ChevronLeft className="h-4 w-4" />
@@ -490,6 +520,7 @@ export default function UpdatesPage() {
                   <button
                     onClick={() => setPage(Math.min(feed.total_pages, page + 1))}
                     disabled={page >= feed.total_pages}
+                    aria-label="Próxima página"
                     className="rounded-lg border border-gray-200 p-2 text-gray-600 hover:bg-gray-50 disabled:opacity-40"
                   >
                     <ChevronRight className="h-4 w-4" />
@@ -513,11 +544,12 @@ export default function UpdatesPage() {
 
       {/* Detail panel */}
       {selectedItem && (
-        <div className="w-[400px] shrink-0 overflow-auto border-l border-gray-200 bg-white p-6">
+        <div className="fixed inset-0 z-50 overflow-auto bg-white p-6 md:relative md:inset-auto md:z-auto md:w-[400px] md:shrink-0 md:border-l md:border-gray-200">
           <div className="mb-4 flex items-center justify-between">
             <h3 className="text-sm font-semibold text-gray-700">Detalhes</h3>
             <button
               onClick={() => setSelectedItem(null)}
+              aria-label="Fechar painel de detalhes"
               className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
             >
               <X className="h-4 w-4" />
@@ -617,11 +649,12 @@ export default function UpdatesPage() {
 
       {/* Sources panel */}
       {showSources && (
-        <div className="w-[350px] shrink-0 overflow-auto border-l border-gray-200 bg-white p-6">
+        <div className="fixed inset-0 z-50 overflow-auto bg-white p-6 md:relative md:inset-auto md:z-auto md:w-[350px] md:shrink-0 md:border-l md:border-gray-200">
           <div className="mb-4 flex items-center justify-between">
             <h3 className="text-sm font-semibold text-gray-700">Status das Fontes</h3>
             <button
               onClick={() => setShowSources(false)}
+              aria-label="Fechar painel de fontes"
               className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
             >
               <X className="h-4 w-4" />

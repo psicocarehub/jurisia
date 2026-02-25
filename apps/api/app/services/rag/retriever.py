@@ -58,6 +58,16 @@ class HybridRetriever:
         # 4. Merge and deduplicate
         all_results = self._merge_results(es_results, qdrant_results)
 
+        # 4b. Also search content_updates index if available
+        try:
+            cu_results = await self._es_content_updates_search(
+                query=query, embedding=query_embedding, top_k=top_k
+            )
+            if cu_results:
+                all_results = self._merge_results(all_results, cu_results)
+        except Exception as e:
+            pass  # content_updates index may not exist yet
+
         # 5. Rerank
         if use_reranker and all_results:
             all_results = await self.reranker.rerank(
@@ -237,6 +247,51 @@ class HybridRetriever:
             )
             for r in results.points
         ]
+
+    async def _es_content_updates_search(
+        self,
+        query: str,
+        embedding: List[float],
+        top_k: int = 5,
+    ) -> List[RetrievedChunk]:
+        """Search the content_updates ES index for recent legal content."""
+        index = f"{settings.ES_INDEX_PREFIX}_content_updates"
+        source = [
+            "content", "document_id", "document_title",
+            "doc_type", "court", "date", "metadata",
+        ]
+
+        body = {
+            "query": {
+                "multi_match": {
+                    "query": query,
+                    "fields": ["content^1", "document_title^2"],
+                    "type": "best_fields",
+                }
+            },
+            "size": top_k,
+            "_source": source,
+        }
+
+        try:
+            resp = await self.es.search(index=index, body=body)
+            hits = resp.get("hits", {}).get("hits", [])
+            return [
+                RetrievedChunk(
+                    id=hit["_id"],
+                    content=hit["_source"].get("content", ""),
+                    score=float(hit.get("_score", 0.0)),
+                    document_id=hit["_source"].get("document_id", ""),
+                    document_title=hit["_source"].get("document_title", ""),
+                    doc_type=hit["_source"].get("doc_type", ""),
+                    court=hit["_source"].get("court", ""),
+                    date=hit["_source"].get("date", ""),
+                    metadata=hit["_source"].get("metadata", {}),
+                )
+                for hit in hits
+            ]
+        except Exception:
+            return []
 
     def _merge_results(
         self,

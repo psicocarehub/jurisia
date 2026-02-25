@@ -1,6 +1,7 @@
 import json
 import logging
 import uuid
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends
@@ -87,6 +88,51 @@ class ChatResponse(BaseModel):
     model_used: str = ""
 
 
+_NOVIDADES_KEYWORDS = {
+    "novidades", "novo", "nova", "novos", "novas", "recente", "recentes",
+    "atualização", "atualizacao", "atualizações", "atualizacoes",
+    "última", "ultima", "últimas", "ultimas", "publicado", "publicada",
+    "publicados", "publicadas", "saiu", "mudança", "mudanca", "alteração",
+    "alteracao",
+}
+
+
+async def _fetch_recent_updates(query: str, areas: list[str] | None = None, limit: int = 5) -> list[dict]:
+    """Fetch recent high-relevance content_updates when query mentions new content."""
+    query_lower = query.lower()
+    if not any(kw in query_lower for kw in _NOVIDADES_KEYWORDS):
+        return []
+
+    try:
+        import httpx
+        from app.config import settings
+
+        base_url = f"{settings.SUPABASE_URL}/rest/v1"
+        headers = {
+            "apikey": settings.SUPABASE_ANON_KEY,
+            "Authorization": f"Bearer {settings.SUPABASE_ANON_KEY}",
+        }
+        params = {
+            "select": "title,category,subcategory,summary,court_or_organ,publication_date,source_url,relevance_score,areas",
+            "relevance_score": "gte.0.7",
+            "order": "captured_at.desc",
+            "limit": str(limit),
+            "captured_at": f"gte.{(datetime.now(timezone.utc) - timedelta(days=7)).strftime('%Y-%m-%dT00:00:00Z')}",
+        }
+        if areas:
+            for area in areas:
+                params["areas"] = f"cs.{{{area}}}"
+                break
+
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(f"{base_url}/content_updates", headers=headers, params=params)
+            if resp.status_code == 200:
+                return resp.json()
+    except Exception as e:
+        logger.warning("Failed to fetch recent updates for chat: %s", e)
+    return []
+
+
 async def _build_context(
     request: ChatRequest, tenant_id: str, user_id: str
 ) -> tuple[str, list[dict]]:
@@ -125,6 +171,30 @@ async def _build_context(
                 context_parts.append(rag_section)
         except Exception as e:
             logger.warning("RAG retrieval failed: %s", e)
+
+    try:
+        updates = await _fetch_recent_updates(user_query)
+        if updates:
+            updates_section = "## Conteúdo Novo Relevante (últimos 7 dias)\n"
+            for i, u in enumerate(updates, 1):
+                updates_section += (
+                    f"\n### Atualização {i}: {u.get('title', '')}\n"
+                    f"Categoria: {u.get('category', '')} | Órgão: {u.get('court_or_organ', 'N/A')} | "
+                    f"Publicação: {u.get('publication_date', 'N/A')}\n"
+                    f"{(u.get('summary') or '')[:400]}\n"
+                )
+                if u.get('source_url'):
+                    sources.append({
+                        "title": u.get("title", ""),
+                        "court": u.get("court_or_organ", ""),
+                        "date": u.get("publication_date", ""),
+                        "doc_type": u.get("category", ""),
+                        "score": u.get("relevance_score", 0.0),
+                        "snippet": (u.get("summary") or "")[:200],
+                    })
+            context_parts.append(updates_section)
+    except Exception as e:
+        logger.warning("Failed to add recent updates to context: %s", e)
 
     if request.use_memory and user_query:
         try:

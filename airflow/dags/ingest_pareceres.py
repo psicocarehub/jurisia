@@ -11,7 +11,9 @@ Executa semanalmente (quarta-feira, 4h UTC).
 
 from __future__ import annotations
 
+import logging
 import re
+import time
 from datetime import date, datetime, timedelta
 from typing import Any
 
@@ -21,6 +23,8 @@ from airflow.operators.python import PythonOperator
 from airflow.providers.postgres.hooks.postgres import PostgresHook
 
 from _content_updates_helper import insert_content_update
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_ARGS = {
     "owner": "jurisai",
@@ -65,9 +69,11 @@ def ingest_pareceres_dou(**kwargs: Any) -> None:
                     },
                 )
                 if resp.status_code != 200:
+                    logger.info("HTTP %d for %s", resp.status_code, keyword)
                     continue
                 data = resp.json()
-            except Exception:
+            except Exception as e:
+                logger.warning("[pareceres] Error fetching %s: %s", keyword, e)
                 continue
 
             for item in data.get("gazettes", []):
@@ -112,6 +118,8 @@ def ingest_pareceres_dou(**kwargs: Any) -> None:
                     areas=_infer_areas_from_parecer(excerpt),
                 )
                 total += 1
+
+            time.sleep(1.0)
 
     hook.run(
         "INSERT INTO ingestion_log (source, records_count, status) VALUES ('pareceres_agu', %s, 'completed')",

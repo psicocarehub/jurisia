@@ -11,6 +11,8 @@ Executa diariamente as 7h UTC (apos o DAG do DOU federal).
 
 from __future__ import annotations
 
+import logging
+import time
 from datetime import date, datetime, timedelta
 from typing import Any
 
@@ -20,6 +22,8 @@ from airflow.operators.python import PythonOperator
 from airflow.providers.postgres.hooks.postgres import PostgresHook
 
 from _content_updates_helper import insert_content_update
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_ARGS = {
     "owner": "jurisai",
@@ -63,7 +67,6 @@ TERRITORIES = {
     "3548500": {"name": "Santos", "uf": "SP"},
     "4209102": {"name": "Itajai", "uf": "SC"},
     "4113700": {"name": "Paranagua", "uf": "PR"},
-    "2927408": {"name": "Salvador (porto)", "uf": "BA"},
     "3518800": {"name": "Guarulhos", "uf": "SP"},
     "3509502": {"name": "Campinas", "uf": "SP"},
     "4205407": {"name": "Florianopolis", "uf": "SC"},
@@ -156,9 +159,11 @@ def ingest_territory(territory_id: str, **kwargs: Any) -> None:
                     },
                 )
                 if resp.status_code != 200:
+                    logger.info("HTTP %d for %s", resp.status_code, keyword)
                     continue
                 data = resp.json()
-            except Exception:
+            except Exception as e:
+                logger.warning("[diario_%s] Error fetching %s: %s", territory_id, keyword, e)
                 continue
 
             for item in data.get("gazettes", []):
@@ -184,6 +189,8 @@ def ingest_territory(territory_id: str, **kwargs: Any) -> None:
                 total += 1
                 if pub_date > max_date:
                     max_date = pub_date
+
+            time.sleep(1.0)
 
     _update_state(hook, territory_id, max_date, total)
 

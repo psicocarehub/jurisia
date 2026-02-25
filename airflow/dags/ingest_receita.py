@@ -13,7 +13,9 @@ Executa diariamente as 8h UTC.
 
 from __future__ import annotations
 
+import logging
 import re
+import time
 from datetime import date, datetime, timedelta
 from typing import Any
 
@@ -23,6 +25,8 @@ from airflow.operators.python import PythonOperator
 from airflow.providers.postgres.hooks.postgres import PostgresHook
 
 from _content_updates_helper import insert_content_update
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_ARGS = {
     "owner": "jurisai",
@@ -118,9 +122,11 @@ def ingest_rfb_via_dou(**kwargs: Any) -> None:
                     },
                 )
                 if resp.status_code != 200:
+                    logger.info("HTTP %d for %s", resp.status_code, keyword)
                     continue
                 data = resp.json()
-            except Exception:
+            except Exception as e:
+                logger.warning("[receita] Error fetching %s: %s", keyword, e)
                 continue
 
             category, subcategory, areas = _classify_rfb(keyword)
@@ -153,6 +159,8 @@ def ingest_rfb_via_dou(**kwargs: Any) -> None:
                 total += 1
                 if pub_date > max_date:
                     max_date = pub_date
+
+            time.sleep(1.0)
 
     _update_state(hook, max_date, total)
 

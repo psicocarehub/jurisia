@@ -63,5 +63,16 @@ def insert_content_update(
 
 def _pg_array(items: list[str]) -> str:
     """Convert a Python list to a PostgreSQL text array literal."""
-    escaped = [i.replace("\\", "\\\\").replace('"', '\\"') for i in items]
-    return "{" + ",".join(f'"{e}"' for e in escaped) + "}"
+    if not items:
+        return "{}"
+    cleaned = []
+    for i in items:
+        if i is None or i == "":
+            continue
+        s = str(i)
+        s = s.replace("\\", "\\\\").replace('"', '\\"')
+        s = s.replace("\n", " ").replace("\r", " ").replace("\t", " ")
+        cleaned.append(f'"{s}"')
+    if not cleaned:
+        return "{}"
+    return "{" + ",".join(cleaned) + "}"

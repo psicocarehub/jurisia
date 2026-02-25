@@ -171,6 +171,63 @@ class AlertService:
         except Exception as e:
             logger.warning("Failed to mark all alerts read for user %s: %s", user_id, e)
 
+    async def process_content_updates(
+        self,
+        updates: list[dict[str, Any]],
+        tenant_id: Optional[str] = None,
+    ) -> int:
+        """
+        Process high-relevance content updates: create alerts for users
+        whose subscribed areas match the update's areas.
+        """
+        if not updates or not tenant_id:
+            return 0
+
+        try:
+            subs = await supabase_db.select(
+                ALERT_SUBSCRIPTIONS_TABLE,
+                filters={"tenant_id": tenant_id, "is_active": True},
+            )
+            if not isinstance(subs, list):
+                return 0
+        except Exception as e:
+            logger.warning("Failed to fetch subscriptions for content updates: %s", e)
+            return 0
+
+        alerts_created = 0
+        for update in updates:
+            update_areas = set(a.lower() for a in (update.get("areas") or []))
+            category = update.get("category", "outro")
+            title = update.get("title", "")[:500]
+
+            for sub in subs:
+                sub_areas = set(a.lower() for a in (sub.get("areas") or []))
+                if sub_areas and not sub_areas.intersection(update_areas):
+                    continue
+
+                user_id = sub.get("user_id")
+                try:
+                    await supabase_db.insert(ALERT_TABLE, {
+                        "change_type": "content_impact",
+                        "title": f"Novo conteúdo: {title}",
+                        "description": (update.get("summary") or "")[:2000],
+                        "areas": update.get("areas", []),
+                        "severity": "medium" if update.get("relevance_score", 0) < 0.9 else "high",
+                        "source_url": update.get("source_url", ""),
+                        "tenant_id": tenant_id,
+                        "user_id": user_id,
+                        "metadata": {
+                            "content_update_id": update.get("id"),
+                            "category": category,
+                        },
+                    })
+                    alerts_created += 1
+                except Exception as e:
+                    logger.warning("Failed to create content update alert for user %s: %s", user_id, e)
+
+        logger.info("Created %d alerts from %d content updates", alerts_created, len(updates))
+        return alerts_created
+
     async def subscribe(
         self,
         user_id: str,

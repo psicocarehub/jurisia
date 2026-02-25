@@ -37,3 +37,38 @@ CREATE INDEX IF NOT EXISTS idx_cu_relevance ON content_updates(relevance_score D
 
 -- Composite index for the main feed query (date range + category)
 CREATE INDEX IF NOT EXISTS idx_cu_feed ON content_updates(captured_at DESC, category);
+
+-- Deduplication: prevent duplicate entries from the same source
+CREATE UNIQUE INDEX IF NOT EXISTS idx_cu_dedup
+  ON content_updates(source, md5(title), publication_date)
+  WHERE publication_date IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_cu_dedup_null_date
+  ON content_updates(source, md5(title))
+  WHERE publication_date IS NULL;
+
+-- Relevance score must be between 0 and 1
+ALTER TABLE content_updates ADD CONSTRAINT valid_relevance
+  CHECK (relevance_score >= 0.0 AND relevance_score <= 1.0);
+
+-- Partial index for cleanup operations
+CREATE INDEX IF NOT EXISTS idx_cu_cleanup
+  ON content_updates(captured_at) WHERE relevance_score < 0.7;
+
+-- Index for unverified items
+CREATE INDEX IF NOT EXISTS idx_cu_unverified
+  ON content_updates(captured_at DESC) WHERE is_verified = FALSE;
+
+-- User bookmarks for content updates
+CREATE TABLE IF NOT EXISTS user_bookmarks (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id UUID NOT NULL,
+    tenant_id UUID NOT NULL,
+    content_update_id UUID NOT NULL REFERENCES content_updates(id) ON DELETE CASCADE,
+    notes TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(user_id, content_update_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_bookmarks_user ON user_bookmarks(user_id);
+CREATE INDEX IF NOT EXISTS idx_bookmarks_tenant ON user_bookmarks(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_bookmarks_content ON user_bookmarks(content_update_id);

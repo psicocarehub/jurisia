@@ -1,6 +1,6 @@
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import httpx
@@ -233,6 +233,60 @@ async def update_case(
         raise HTTPException(status_code=500, detail=str(e))
 
     return _row_to_response(row)
+
+
+@router.get("/{case_id}/related-updates")
+async def get_related_updates(
+    case_id: str,
+    days: int = 30,
+    limit: int = 20,
+    user: dict = Depends(get_current_user),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Get content_updates related to a case's area, from the last N days."""
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(
+                f"{_base_url()}/{TABLE}",
+                headers={**_headers(), "Accept": "application/vnd.pgrst.object+json"},
+                params={"id": f"eq.{case_id}", "tenant_id": f"eq.{tenant_id}", "select": "area,title"},
+            )
+            if resp.status_code == 406:
+                raise HTTPException(status_code=404, detail="Case not found")
+            resp.raise_for_status()
+            case_data = resp.json()
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to get case for related updates: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+    case_area = (case_data.get("area") or "").lower()
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
+
+    params = {
+        "select": "id,title,category,subcategory,summary,court_or_organ,publication_date,source_url,relevance_score,areas,captured_at",
+        "captured_at": f"gte.{since}T00:00:00Z",
+        "order": "relevance_score.desc",
+        "limit": str(limit),
+    }
+    if case_area:
+        params["areas"] = f"cs.{{{case_area}}}"
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(
+                f"{_base_url()}/content_updates",
+                headers=_headers(),
+                params=params,
+            )
+            resp.raise_for_status()
+            updates = resp.json()
+    except Exception as e:
+        logger.error("Failed to fetch related updates: %s", e)
+        updates = []
+
+    return {"case_id": case_id, "updates": updates, "total": len(updates)}
 
 
 @router.delete("/{case_id}", status_code=204)

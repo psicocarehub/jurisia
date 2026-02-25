@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Settings, User, Bell, Shield, Building2 } from 'lucide-react';
+import { Settings, User, Bell, Shield, Building2, Newspaper } from 'lucide-react';
 import { useToast } from '@/components/toast';
 import { apiFetch, apiPost } from '@/lib/api';
 
@@ -16,6 +16,8 @@ interface Preferences {
   notifications: boolean;
   alertAreas: string[];
   alertTribunais: string[];
+  updateCategories: string[];
+  updateSources: string[];
 }
 
 const LLM_MODELS = [
@@ -36,8 +38,23 @@ const TRIBUNAIS = [
   'STF', 'STJ', 'TST', 'TJSP', 'TJRJ', 'TJMG', 'TJRS', 'TJPR',
 ];
 
+const UPDATE_CATEGORIES = [
+  { value: 'legislacao', label: 'Legislação' },
+  { value: 'jurisprudencia', label: 'Jurisprudência' },
+  { value: 'doutrina', label: 'Doutrina' },
+  { value: 'normativo', label: 'Normativos' },
+  { value: 'parecer', label: 'Pareceres' },
+  { value: 'sumula', label: 'Súmulas' },
+];
+
+const UPDATE_SOURCES = [
+  'DOU', 'DataJud', 'STF', 'STJ', 'CARF', 'JUIT',
+  'Diários Regionais', 'Receita Federal', 'AGU', 'ANVISA',
+  'ANATEL', 'ANS', 'ANEEL', 'CVM', 'BACEN', 'Conjur', 'JOTA',
+];
+
 export default function SettingsPage() {
-  const [activeTab, setActiveTab] = useState<'profile' | 'preferences' | 'alerts'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'preferences' | 'alerts' | 'updates'>('profile');
   const [profile, setProfile] = useState<UserProfile>({
     name: '',
     email: '',
@@ -48,6 +65,8 @@ export default function SettingsPage() {
     notifications: true,
     alertAreas: [],
     alertTribunais: [],
+    updateCategories: [],
+    updateSources: [],
   });
   const [saving, setSaving] = useState(false);
   const { success: showSuccess, error: showError } = useToast();
@@ -115,10 +134,29 @@ export default function SettingsPage() {
     }));
   };
 
+  const toggleUpdateCategory = (cat: string) => {
+    setPrefs((p) => ({
+      ...p,
+      updateCategories: p.updateCategories.includes(cat)
+        ? p.updateCategories.filter((c) => c !== cat)
+        : [...p.updateCategories, cat],
+    }));
+  };
+
+  const toggleUpdateSource = (src: string) => {
+    setPrefs((p) => ({
+      ...p,
+      updateSources: p.updateSources.includes(src)
+        ? p.updateSources.filter((s) => s !== src)
+        : [...p.updateSources, src],
+    }));
+  };
+
   const tabs = [
     { id: 'profile' as const, label: 'Perfil', icon: User },
     { id: 'preferences' as const, label: 'Preferências', icon: Settings },
     { id: 'alerts' as const, label: 'Inscrições de Alertas', icon: Bell },
+    { id: 'updates' as const, label: 'Novidades', icon: Newspaper },
   ];
 
   return (
@@ -226,6 +264,49 @@ export default function SettingsPage() {
                     }`}
                   >
                     {t}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'updates' && (
+          <div className="space-y-6">
+            <div>
+              <h3 className="text-sm font-medium text-gray-700 mb-3">Categorias de Interesse</h3>
+              <p className="text-xs text-gray-500 mb-3">Selecione as categorias que aparecem primeiro no feed de novidades</p>
+              <div className="flex flex-wrap gap-2">
+                {UPDATE_CATEGORIES.map(({ value, label }) => (
+                  <button
+                    key={value}
+                    onClick={() => toggleUpdateCategory(value)}
+                    className={`px-3 py-1.5 text-sm rounded-full border transition-colors ${
+                      prefs.updateCategories.includes(value)
+                        ? 'bg-legal-blue-600 text-white border-legal-blue-600'
+                        : 'bg-white text-gray-600 border-gray-300 hover:border-legal-blue-400'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <h3 className="text-sm font-medium text-gray-700 mb-3">Fontes Preferidas</h3>
+              <p className="text-xs text-gray-500 mb-3">Selecione as fontes de maior interesse</p>
+              <div className="flex flex-wrap gap-2">
+                {UPDATE_SOURCES.map((src) => (
+                  <button
+                    key={src}
+                    onClick={() => toggleUpdateSource(src)}
+                    className={`px-3 py-1.5 text-sm rounded-full border transition-colors ${
+                      prefs.updateSources.includes(src)
+                        ? 'bg-legal-blue-600 text-white border-legal-blue-600'
+                        : 'bg-white text-gray-600 border-gray-300 hover:border-legal-blue-400'
+                    }`}
+                  >
+                    {src}
                   </button>
                 ))}
               </div>

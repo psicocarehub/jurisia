@@ -10,6 +10,7 @@ import {
   X,
   AlertTriangle,
   FileText,
+  Newspaper,
   Scale,
   Clock,
 } from 'lucide-react';
@@ -31,6 +32,7 @@ const TYPE_ICONS: Record<string, React.ReactNode> = {
   new_thesis: <Scale className="h-5 w-5 text-purple-500" />,
   deadline: <Clock className="h-5 w-5 text-orange-500" />,
   warning: <AlertTriangle className="h-5 w-5 text-yellow-500" />,
+  content_impact: <Newspaper className="h-5 w-5 text-green-500" />,
 };
 
 const SEVERITY_COLORS: Record<string, string> = {

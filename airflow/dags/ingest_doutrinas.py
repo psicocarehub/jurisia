@@ -14,7 +14,9 @@ Executa diariamente as 9h UTC.
 
 from __future__ import annotations
 
+import logging
 import re
+import time
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 from typing import Any
@@ -25,6 +27,8 @@ from airflow.operators.python import PythonOperator
 from airflow.providers.postgres.hooks.postgres import PostgresHook
 
 from _content_updates_helper import insert_content_update
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_ARGS = {
     "owner": "jurisai",
@@ -123,7 +127,8 @@ def ingest_rss_source(source_config: dict, **kwargs: Any) -> None:
 
     try:
         root = ET.fromstring(resp.text)
-    except ET.ParseError:
+    except ET.ParseError as e:
+        logger.warning("[doutrina_%s] XML parse error: %s", name, e)
         return
 
     ns = {"atom": "http://www.w3.org/2005/Atom"}

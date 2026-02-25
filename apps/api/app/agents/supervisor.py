@@ -45,7 +45,7 @@ async def supervisor_node(state: dict) -> dict:
             pred = model.predict([last_message])[0]
             intent = _intent_labels[pred]
             logger.debug("ML intent classification: %s (label_idx=%d)", intent, pred)
-            valid_intents = {"research", "drafting", "analysis", "memory", "chat"}
+            valid_intents = {"research", "drafting", "analysis", "memory", "chat", "updates"}
             if intent in valid_intents:
                 return {"current_agent": intent}
         except Exception as e:
@@ -59,6 +59,7 @@ async def supervisor_node(state: dict) -> dict:
 - drafting: redação de petição, documento jurídico
 - analysis: análise de caso, risk assessment, timeline
 - memory: consulta sobre casos/clientes anteriores
+- updates: novidades, atualizações recentes, conteúdo novo publicado
 - chat: conversa geral, dúvidas simples
 
 Mensagem: {last_message}
@@ -76,7 +77,12 @@ Responda APENAS com a categoria (research, drafting, analysis, memory ou chat)."
         intent = "memory"
     elif "research" in intent or "pesquis" in intent:
         intent = "research"
+    elif "update" in intent or "novidade" in intent or "atualiz" in intent:
+        intent = "updates"
     else:
         intent = "chat"
+
+    if intent == "updates":
+        intent = "research"
 
     return {"current_agent": intent}
