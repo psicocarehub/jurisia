@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { apiFetch, apiPost } from '@/lib/api';
 import { useToast } from '@/components/toast';
 import {
@@ -12,6 +13,7 @@ import {
   Trash2,
   Edit3,
   Filter,
+  Scan,
 } from 'lucide-react';
 
 interface Case {
@@ -36,6 +38,7 @@ const AREAS = [
 const STATUSES = ['active', 'archived', 'closed', 'pending'];
 
 export default function CasesPage() {
+  const router = useRouter();
   const [cases, setCases] = useState<Case[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
@@ -198,6 +201,13 @@ export default function CasesPage() {
           <div className="border-b p-4 flex justify-between items-center">
             <h2 className="font-semibold text-gray-900 truncate">{selectedCase.title}</h2>
             <div className="flex gap-1">
+              <button
+                onClick={() => router.push(`/cases/${selectedCase.id}`)}
+                className="px-3 py-1.5 text-xs font-medium text-white bg-legal-blue-600 hover:bg-legal-blue-700 rounded-lg flex items-center gap-1.5 transition-colors"
+              >
+                <Scan className="h-3.5 w-3.5" />
+                Raio-X
+              </button>
               <button
                 onClick={() => handleDelete(selectedCase.id)}
                 className="p-2 text-gray-400 hover:text-red-500 rounded"

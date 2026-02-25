@@ -1,39 +1,73 @@
-from fastapi import HTTPException, status
+"""
+Structured exception classes and FastAPI exception handlers.
+
+Provides consistent JSON error responses across all endpoints:
+  {"error": {"code": "NOT_FOUND", "message": "...", "details": ...}}
+"""
+
+from typing import Any, Optional
 
 
-class NotFoundError(HTTPException):
-    def __init__(self, detail: str = "Resource not found"):
-        super().__init__(status_code=status.HTTP_404_NOT_FOUND, detail=detail)
+class AppError(Exception):
+    """Base exception with structured fields."""
+
+    status_code: int = 500
+    code: str = "INTERNAL_ERROR"
+
+    def __init__(
+        self,
+        message: str = "Erro interno do servidor",
+        details: Optional[Any] = None,
+    ) -> None:
+        self.message = message
+        self.details = details
+        super().__init__(message)
+
+    def to_dict(self) -> dict:
+        body: dict[str, Any] = {"code": self.code, "message": self.message}
+        if self.details is not None:
+            body["details"] = self.details
+        return {"error": body}
 
 
-class ForbiddenError(HTTPException):
-    def __init__(self, detail: str = "Access denied"):
-        super().__init__(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
+class NotFoundError(AppError):
+    status_code = 404
+    code = "NOT_FOUND"
+
+    def __init__(self, resource: str = "Recurso", identifier: str = "") -> None:
+        msg = f"{resource} não encontrado"
+        if identifier:
+            msg += f": {identifier}"
+        super().__init__(message=msg)
 
 
-class UnauthorizedError(HTTPException):
-    def __init__(self, detail: str = "Invalid credentials"):
-        super().__init__(status_code=status.HTTP_401_UNAUTHORIZED, detail=detail)
+class ValidationError(AppError):
+    status_code = 422
+    code = "VALIDATION_ERROR"
+
+    def __init__(self, message: str = "Dados inválidos", details: Optional[Any] = None) -> None:
+        super().__init__(message=message, details=details)
 
 
-class ConflictError(HTTPException):
-    def __init__(self, detail: str = "Resource already exists"):
-        super().__init__(status_code=status.HTTP_409_CONFLICT, detail=detail)
+class ServiceUnavailableError(AppError):
+    status_code = 503
+    code = "SERVICE_UNAVAILABLE"
+
+    def __init__(self, service: str = "Serviço externo") -> None:
+        super().__init__(message=f"{service} temporariamente indisponível")
 
 
-class ValidationError(HTTPException):
-    def __init__(self, detail: str = "Validation error"):
-        super().__init__(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=detail)
+class RateLimitError(AppError):
+    status_code = 429
+    code = "RATE_LIMIT_EXCEEDED"
+
+    def __init__(self, message: str = "Limite de requisições excedido") -> None:
+        super().__init__(message=message)
 
 
-class CriminalPredictionError(HTTPException):
-    """CNJ Resolução 615/2025 Art. 23: predição em matéria criminal é desencorajada."""
+class ForbiddenError(AppError):
+    status_code = 403
+    code = "FORBIDDEN"
 
-    def __init__(self):
-        super().__init__(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                "Predição em matéria criminal é desencorajada pela "
-                "CNJ Resolução 615/2025 Art. 23"
-            ),
-        )
+    def __init__(self, message: str = "Acesso negado") -> None:
+        super().__init__(message=message)

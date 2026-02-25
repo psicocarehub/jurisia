@@ -81,11 +81,11 @@ async def list_petitions(
     user: dict = Depends(get_current_user),
     tenant_id: str = Depends(get_tenant_id),
 ):
+    from app.api.v1.helpers import supabase_list
+
     params: dict[str, str] = {
         "tenant_id": f"eq.{tenant_id}",
         "order": "created_at.desc",
-        "offset": str(skip),
-        "limit": str(limit),
         "select": "*",
     }
     if case_id:
@@ -94,18 +94,15 @@ async def list_petitions(
         params["status"] = f"eq.{status}"
 
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(_base_url(), headers=_headers(), params=params)
-            if resp.status_code == 200:
-                rows = resp.json()
-                return PetitionListResponse(
-                    petitions=[_row_to_response(r) for r in rows],
-                    total=len(rows),
-                )
+        rows, total = await supabase_list(TABLE, params=params, skip=skip, limit=limit)
     except Exception as e:
         logger.error("List petitions failed: %s", e)
+        rows, total = [], 0
 
-    return PetitionListResponse(petitions=[], total=0)
+    return PetitionListResponse(
+        petitions=[_row_to_response(r) for r in rows],
+        total=total,
+    )
 
 
 @router.post("", response_model=PetitionResponse, status_code=201)

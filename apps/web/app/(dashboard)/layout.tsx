@@ -16,10 +16,13 @@ import {
   LogOut,
   ChevronLeft,
   Menu,
+  Moon,
+  Sun,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { apiFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
+import { useDarkMode } from '@/lib/use-dark-mode';
 
 const navItems = [
   { href: '/chat', label: 'Chat', icon: MessageSquare },
@@ -40,6 +43,7 @@ export default function DashboardLayout({
 }) {
   const pathname = usePathname();
   const { user, logout, isLoading } = useAuth();
+  const { isDark, toggle: toggleDarkMode } = useDarkMode();
   const [badges, setBadges] = useState<Record<string, number>>({});
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -80,7 +84,7 @@ export default function DashboardLayout({
 
   if (isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
+      <div className="flex min-h-screen items-center justify-center dark:bg-gray-900">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-legal-blue-600 border-t-transparent" />
       </div>
     );
@@ -89,17 +93,17 @@ export default function DashboardLayout({
   const sidebarContent = (
     <>
       <div className={cn(
-        'flex h-16 items-center border-b border-gray-200 px-4',
+        'flex h-16 items-center border-b border-gray-200 dark:border-gray-700 px-4',
         collapsed ? 'justify-center' : 'justify-between',
       )}>
         {!collapsed && (
-          <Link href="/chat" className="text-lg font-semibold text-legal-blue-700">
+          <Link href="/chat" className="text-lg font-semibold text-legal-blue-700 dark:text-legal-blue-400">
             Juris.AI
           </Link>
         )}
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className="hidden lg:flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+          className="hidden lg:flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-600 dark:hover:text-gray-300"
         >
           <ChevronLeft className={cn('h-4 w-4 transition-transform', collapsed && 'rotate-180')} />
         </button>
@@ -118,8 +122,8 @@ export default function DashboardLayout({
                 'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
                 collapsed && 'justify-center px-2',
                 isActive
-                  ? 'bg-legal-blue-50 text-legal-blue-700'
-                  : 'text-gray-700 hover:bg-gray-100',
+                  ? 'bg-legal-blue-50 text-legal-blue-700 dark:bg-legal-blue-900/30 dark:text-legal-blue-400'
+                  : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700',
               )}
             >
               <Icon className="h-5 w-5 shrink-0" />
@@ -137,24 +141,36 @@ export default function DashboardLayout({
         })}
       </nav>
 
-      {/* User section */}
+      {/* Dark mode + User section */}
       <div className={cn(
-        'border-t border-gray-200 p-3',
+        'border-t border-gray-200 dark:border-gray-700 p-3',
         collapsed && 'flex flex-col items-center',
       )}>
+        <button
+          onClick={toggleDarkMode}
+          title={isDark ? 'Modo claro' : 'Modo escuro'}
+          className={cn(
+            'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 transition-colors hover:bg-gray-100 dark:hover:bg-gray-700 w-full mb-1',
+            collapsed && 'justify-center px-2',
+          )}
+        >
+          {isDark ? <Sun className="h-5 w-5 shrink-0" /> : <Moon className="h-5 w-5 shrink-0" />}
+          {!collapsed && <span>{isDark ? 'Modo Claro' : 'Modo Escuro'}</span>}
+        </button>
+
         {user && !collapsed && (
-          <div className="mb-2 rounded-lg bg-gray-50 px-3 py-2">
-            <p className="truncate text-sm font-medium text-gray-900">
+          <div className="mb-2 rounded-lg bg-gray-50 dark:bg-gray-700 px-3 py-2">
+            <p className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">
               {user.email}
             </p>
-            <p className="text-xs capitalize text-gray-500">{user.role}</p>
+            <p className="text-xs capitalize text-gray-500 dark:text-gray-400">{user.role}</p>
           </div>
         )}
         <button
           onClick={logout}
           title="Sair"
           className={cn(
-            'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-red-50 hover:text-red-600 w-full',
+            'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 w-full',
             collapsed && 'justify-center px-2',
           )}
         >
@@ -166,7 +182,7 @@ export default function DashboardLayout({
   );
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex min-h-screen bg-gray-50 dark:bg-gray-900">
       {/* Mobile overlay */}
       {mobileOpen && (
         <div
@@ -177,7 +193,7 @@ export default function DashboardLayout({
 
       {/* Mobile sidebar */}
       <aside className={cn(
-        'fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-gray-200 bg-white transition-transform lg:hidden',
+        'fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800 transition-transform lg:hidden',
         mobileOpen ? 'translate-x-0' : '-translate-x-full',
       )}>
         {sidebarContent}
@@ -185,7 +201,7 @@ export default function DashboardLayout({
 
       {/* Desktop sidebar */}
       <aside className={cn(
-        'hidden lg:flex shrink-0 flex-col border-r border-gray-200 bg-white transition-all duration-200',
+        'hidden lg:flex shrink-0 flex-col border-r border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800 transition-all duration-200',
         collapsed ? 'w-16' : 'w-56',
       )}>
         {sidebarContent}
@@ -194,17 +210,17 @@ export default function DashboardLayout({
       {/* Main content */}
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Mobile header */}
-        <div className="flex h-14 items-center gap-3 border-b border-gray-200 bg-white px-4 lg:hidden">
+        <div className="flex h-14 items-center gap-3 border-b border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800 px-4 lg:hidden">
           <button
             onClick={() => setMobileOpen(true)}
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100"
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
           >
             <Menu className="h-5 w-5" />
           </button>
-          <span className="text-lg font-semibold text-legal-blue-700">Juris.AI</span>
+          <span className="text-lg font-semibold text-legal-blue-700 dark:text-legal-blue-400">Juris.AI</span>
         </div>
 
-        <main className="flex-1 overflow-auto bg-gray-50">
+        <main className="flex-1 overflow-auto bg-gray-50 dark:bg-gray-900">
           {children}
         </main>
       </div>

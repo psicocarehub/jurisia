@@ -10,9 +10,11 @@ from typing import Any, Dict, Optional
 from pydantic import BaseModel
 
 from app.config import settings
+from app.services.cache import CacheService
 from app.services.clients import create_es_client
 
 logger = logging.getLogger(__name__)
+_cache = CacheService()
 
 
 class JudgeProfile(BaseModel):
@@ -41,6 +43,11 @@ class JurimetricsService:
         self, judge_name: str, court: Optional[str] = None
     ) -> Optional[JudgeProfile]:
         """Build judge profile from Elasticsearch aggregation."""
+        cache_key = f"judge_profile:{judge_name}:{court or 'all'}"
+        cached = await _cache.get(cache_key)
+        if cached:
+            return JudgeProfile(**cached)
+
         must_clauses: list[dict] = [
             {"match": {"metadata.judge_name": judge_name}},
         ]
@@ -118,7 +125,7 @@ class JurimetricsService:
                     "snippet": src.get("content", "")[:200],
                 })
 
-            return JudgeProfile(
+            profile = JudgeProfile(
                 name=judge_name,
                 court=primary_court,
                 jurisdiction=", ".join(courts),
@@ -129,6 +136,8 @@ class JurimetricsService:
                 areas=areas,
                 recent_decisions=recent_decisions,
             )
+            await _cache.set(cache_key, profile.model_dump(), ttl=CacheService.TTL_JUDGE_PROFILE)
+            return profile
 
         except Exception as e:
             logger.error("Judge profile aggregation failed: %s", e)

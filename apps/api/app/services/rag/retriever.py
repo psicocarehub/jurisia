@@ -8,10 +8,17 @@ from typing import List, Optional
 
 from qdrant_client.models import Filter, FieldCondition, MatchValue
 
+import hashlib
+import logging
+
 from app.config import settings
+from app.services.cache import CacheService
 from app.services.clients import create_es_client, create_qdrant_client
 from app.services.rag.embeddings import EmbeddingService
 from app.services.rag.models import RetrievedChunk
+
+logger = logging.getLogger(__name__)
+_cache = CacheService()
 
 
 class HybridRetriever:
@@ -35,6 +42,12 @@ class HybridRetriever:
         use_reranker: bool = True,
     ) -> List[RetrievedChunk]:
         """Retrieve relevant chunks via hybrid search with optional reranking."""
+        query_hash = hashlib.sha256(f"{query}:{tenant_id}:{top_k}:{filters}".encode()).hexdigest()[:16]
+        cache_key = f"rag:{tenant_id}:{query_hash}"
+        cached = await _cache.get(cache_key)
+        if cached:
+            return [RetrievedChunk(**c) for c in cached]
+
         # 1. Generate query embedding
         query_embedding = await self.embedder.embed_query(query)
 
@@ -66,7 +79,7 @@ class HybridRetriever:
             if cu_results:
                 all_results = self._merge_results(all_results, cu_results)
         except Exception as e:
-            pass  # content_updates index may not exist yet
+            logger.debug("content_updates search skipped (index may not exist): %s", e)
 
         # 5. Rerank
         if use_reranker and all_results:
@@ -78,6 +91,11 @@ class HybridRetriever:
         else:
             all_results = all_results[:top_k]
 
+        await _cache.set(
+            cache_key,
+            [c.model_dump() for c in all_results],
+            ttl=CacheService.TTL_RAG,
+        )
         return all_results
 
     def _rrf_merge(

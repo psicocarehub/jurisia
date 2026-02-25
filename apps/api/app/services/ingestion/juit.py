@@ -219,4 +219,4 @@ class JUITClient:
             try:
                 self._rate_limit_remaining = int(remaining)
             except ValueError:
-                pass
+                logger.debug("Non-integer X-RateLimit-Remaining: %s", remaining)

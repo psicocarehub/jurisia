@@ -39,7 +39,7 @@ class STJOpenDataClient:
                             if row_date < date_from:
                                 continue
                         except (ValueError, KeyError):
-                            pass
+                            logger.debug("Skipping STJ row with unparseable date: %s", row.get("data"))
                     yield dict(row)
             except Exception as e:
                 logger.error("STJ stream_decisions failed: %s", e)

@@ -76,12 +76,12 @@ async def list_documents(
     user: dict = Depends(get_current_user),
     tenant_id: str = Depends(get_tenant_id),
 ):
-    params: dict = {
+    from app.api.v1.helpers import supabase_list
+
+    params: dict[str, str] = {
         "select": "*",
         "tenant_id": f"eq.{tenant_id}",
         "order": "created_at.desc",
-        "offset": str(skip),
-        "limit": str(limit),
     }
     if case_id:
         params["case_id"] = f"eq.{case_id}"
@@ -91,19 +91,14 @@ async def list_documents(
         params["ocr_status"] = f"eq.{ocr_status}"
 
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.get(
-                f"{_base_url()}/{TABLE}", headers=_headers(), params=params
-            )
-            resp.raise_for_status()
-            rows = resp.json()
+        rows, total = await supabase_list(TABLE, params=params, skip=skip, limit=limit)
     except Exception as e:
         logger.error("Failed to list documents: %s", e)
-        rows = []
+        rows, total = [], 0
 
     return DocumentListResponse(
         documents=[_row_to_response(r) for r in rows],
-        total=len(rows),
+        total=total,
     )
 
 
