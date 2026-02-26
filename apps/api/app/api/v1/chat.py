@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from app.dependencies import get_current_user, get_tenant_id
+from app.dependencies import get_current_user_optional, get_tenant_id_optional
 
 logger = logging.getLogger(__name__)
 
@@ -224,8 +224,8 @@ async def _build_context(
 @router.post("/completions")
 async def chat_completions(
     request: ChatRequest,
-    user: dict = Depends(get_current_user),
-    tenant_id: str = Depends(get_tenant_id),
+    user: dict = Depends(get_current_user_optional),
+    tenant_id: str = Depends(get_tenant_id_optional),
 ):
     if request.stream:
         return StreamingResponse(

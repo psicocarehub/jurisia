@@ -5,17 +5,7 @@ const API_URL = process.env.API_URL || 'http://localhost:8000';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    let token = request.headers.get('authorization');
-
-    if (!token) {
-      const demoResp = await fetch(`${API_URL}/api/v1/chat/demo-token`, {
-        method: 'POST',
-      });
-      if (demoResp.ok) {
-        const data = await demoResp.json();
-        token = `Bearer ${data.token}`;
-      }
-    }
+    const token = request.headers.get('authorization');
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
