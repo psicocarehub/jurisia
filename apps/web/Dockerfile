@@ -2,13 +2,13 @@ FROM node:20-alpine AS base
 
 FROM base AS deps
 WORKDIR /app
-COPY apps/web/package.json apps/web/package-lock.json* ./
+COPY package.json package-lock.json* ./
 RUN npm ci
 
 FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
-COPY apps/web/ .
+COPY . .
 RUN npm run build
 
 FROM base AS runner
